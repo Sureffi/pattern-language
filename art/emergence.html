@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>007 — Emergence</title>
+</head>
+<body>
+<script src="spatial.js"></script>
+<script src="shell.js"></script>
+<script>
+shell({
+  num: '007',
+  title: 'Emergence',
+  epigraph: 'the whole exceeds the sum',
+  accent: 'rgba(224, 224, 240, 0.35)',
+  cursor: 'default',
+  controls: 'mouse &mdash; influence flock<br>click &mdash; spawn burst<br>1-3 &mdash; behavior modes<br>space &mdash; scatter &amp; reform',
+  prev: { href: 'cosmic.html', title: 'Cosmic Web' },
+
+  setup(canvas, ctx, W, H) {
+    const TWO_PI = Math.PI * 2
+    const NUM_AGENTS = 1500
+    let mouseX = 0, mouseY = 0, mouseActive = false, time = 0, behaviorMode = 0
+
+    const behaviors = [
+      { alignR: 60, cohR: 100, sepR: 25, alignF: 0.05, cohF: 0.01, sepF: 0.08, mouseF: 0.003, maxSpd: 3 },
+      { alignR: 40, cohR: 150, sepR: 20, alignF: 0.08, cohF: 0.005, sepF: 0.1, mouseF: 0.005, maxSpd: 4 },
+      { alignR: 80, cohR: 200, sepR: 15, alignF: 0.03, cohF: 0.02, sepF: 0.05, mouseF: 0.002, maxSpd: 2.5 },
+    ]
+
+    const NUM_HB = 12, HB_SZ = 360 / NUM_HB
+    const hueBkts = new Array(NUM_HB)
+    for (let i = 0; i < NUM_HB; i++) hueBkts[i] = []
+
+    const MAX_TRAIL = 16
+    const _nbrs = []
+
+    function Agent(x, y) {
+      this.x = x; this.y = y
+      const a = Math.random() * TWO_PI, s = 1 + Math.random() * 1.5
+      this.vx = Math.cos(a) * s; this.vy = Math.sin(a) * s
+      this.hue = 0; this.hueBkt = 0; this.speed = s
+      this.maxTrail = 8 + (Math.random() * 8 | 0)
+      this.trailX = new Float32Array(this.maxTrail)
+      this.trailY = new Float32Array(this.maxTrail)
+      this.tHead = 0; this.tCount = 0
+    }
+
+    Agent.prototype.pushTrail = function() {
+      this.trailX[this.tHead] = this.x; this.trailY[this.tHead] = this.y
+      this.tHead = (this.tHead + 1) % this.maxTrail
+      if (this.tCount < this.maxTrail) this.tCount++
+    }
+
+    Agent.prototype.update = function(nbrs, nLen) {
+      const b = behaviors[behaviorMode]
+      let aX = 0, aY = 0, aCnt = 0
+      let cX = 0, cY = 0, cCnt = 0
+      let sX = 0, sY = 0, sCnt = 0
+
+      const aR2 = b.alignR * b.alignR, cR2 = b.cohR * b.cohR, sR2 = b.sepR * b.sepR
+
+      for (let i = 0; i < nLen; i++) {
+        const o = nbrs[i]
+        if (o === this) continue
+        const dx = o.x - this.x, dy = o.y - this.y, d2 = dx * dx + dy * dy
+
+        if (d2 < aR2) { aX += o.vx; aY += o.vy; aCnt++ }
+        if (d2 < cR2) { cX += o.x; cY += o.y; cCnt++ }
+        if (d2 < sR2 && d2 > 0) {
+          const inv = 1 / Math.sqrt(d2)
+          sX -= dx * inv; sY -= dy * inv; sCnt++
+        }
+      }
+
+      if (aCnt > 0) {
+        aX /= aCnt; aY /= aCnt
+        const m2 = aX * aX + aY * aY
+        if (m2 > 0) {
+          const inv = 1 / Math.sqrt(m2)
+          this.vx += (aX * inv * b.maxSpd - this.vx) * b.alignF
+          this.vy += (aY * inv * b.maxSpd - this.vy) * b.alignF
+        }
+      }
+      if (cCnt > 0) {
+        this.vx += (cX / cCnt - this.x) * b.cohF
+        this.vy += (cY / cCnt - this.y) * b.cohF
+      }
+      if (sCnt > 0) { this.vx += sX * b.sepF; this.vy += sY * b.sepF }
+
+      if (mouseActive) {
+        const dx = mouseX - this.x, dy = mouseY - this.y, d2 = dx * dx + dy * dy
+        if (d2 < 90000 && d2 > 25) {
+          const dist = Math.sqrt(d2), inv = 1 / dist
+          if (behaviorMode === 1) {
+            const tx = -dy * inv, ty = dx * inv
+            this.vx += tx * b.mouseF * 50 + dx * inv * b.mouseF * 10
+            this.vy += ty * b.mouseF * 50 + dy * inv * b.mouseF * 10
+          } else {
+            this.vx += dx * inv * b.mouseF * (300 - dist) * 0.01
+            this.vy += dy * inv * b.mouseF * (300 - dist) * 0.01
+          }
+        }
+      }
+
+      const ss = this.vx * this.vx + this.vy * this.vy
+      const ms2 = b.maxSpd * b.maxSpd
+      if (ss > ms2) {
+        const sc = b.maxSpd / Math.sqrt(ss)
+        this.vx *= sc; this.vy *= sc; this.speed = b.maxSpd
+      } else {
+        this.speed = Math.sqrt(ss)
+      }
+
+      this.x += this.vx; this.y += this.vy
+      if (this.x < 0) this.x += W; if (this.x > W) this.x -= W
+      if (this.y < 0) this.y += H; if (this.y > H) this.y -= H
+
+      this.hue = ((Math.atan2(this.vy, this.vx) / Math.PI) * 180 + 360) % 360
+      this.hueBkt = (this.hue / HB_SZ) | 0
+      if (this.hueBkt >= NUM_HB) this.hueBkt = NUM_HB - 1
+      this.pushTrail()
+    }
+
+    const agents = []
+    const grid = new SpatialGrid(120)
+
+    // spawn clustered near center (Box-Muller)
+    const cx = W * 0.5, cy = H * 0.5
+    for (let i = 0; i < NUM_AGENTS; i++) {
+      const u1 = Math.random(), u2 = Math.random()
+      const mag = Math.sqrt(-2 * Math.log(u1 + 0.0001)) * 0.18 * Math.min(W, H)
+      const theta = TWO_PI * u2
+      agents.push(new Agent(
+        Math.max(0, Math.min(W, cx + Math.cos(theta) * mag)),
+        Math.max(0, Math.min(H, cy + Math.sin(theta) * mag))
+      ))
+    }
+
+    canvas.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; mouseActive = true })
+    canvas.addEventListener('mouseleave', () => { mouseActive = false })
+    canvas.addEventListener('click', e => {
+      const max = Math.min(50, 3000 - agents.length)
+      for (let i = 0; i < max; i++) {
+        const a = Math.random() * TWO_PI, d = Math.random() * 30
+        const ag = new Agent(e.clientX + Math.cos(a) * d, e.clientY + Math.sin(a) * d)
+        ag.vx = Math.cos(a) * 5; ag.vy = Math.sin(a) * 5
+        agents.push(ag)
+      }
+    })
+    window.addEventListener('keydown', e => {
+      if (e.key === ' ') {
+        e.preventDefault()
+        for (let i = 0; i < agents.length; i++) {
+          const a = Math.random() * TWO_PI
+          agents[i].vx = Math.cos(a) * 6; agents[i].vy = Math.sin(a) * 6
+        }
+      }
+      if (e.key === '1') behaviorMode = 0
+      if (e.key === '2') behaviorMode = 1
+      if (e.key === '3') behaviorMode = 2
+    })
+
+    function batchDraw() {
+      for (let b = 0; b < NUM_HB; b++) hueBkts[b].length = 0
+      for (let i = 0; i < agents.length; i++) {
+        const a = agents[i]
+        if (a.tCount >= 2) hueBkts[a.hueBkt].push(a)
+      }
+
+      const maxSpd = behaviors[behaviorMode].maxSpd
+      const invMS = 1 / maxSpd
+      const wH = W * 0.5, hH = H * 0.5
+
+      for (let b = 0; b < NUM_HB; b++) {
+        const bkt = hueBkts[b]
+        if (bkt.length === 0) continue
+        const bHue = (b * HB_SZ + HB_SZ * 0.5) % 360
+
+        let totSpd = 0
+        for (let i = 0; i < bkt.length; i++) totSpd += bkt[i].speed
+        const avgSpd = totSpd / bkt.length
+        const al = 0.3 + (avgSpd * invMS) * 0.5
+
+        ctx.beginPath()
+        for (let i = 0; i < bkt.length; i++) {
+          const a = bkt[i], cnt = a.tCount, mt = a.maxTrail
+          const start = (a.tHead - cnt + mt) % mt
+          let pX = a.trailX[start], pY = a.trailY[start]
+          ctx.moveTo(pX, pY)
+          for (let j = 1; j < cnt; j++) {
+            const idx = (start + j) % mt
+            const cx = a.trailX[idx], cy = a.trailY[idx]
+            const dx = cx - pX, dy = cy - pY
+            if (dx > -wH && dx < wH && dy > -hH && dy < hH) ctx.lineTo(cx, cy)
+            else ctx.moveTo(cx, cy)
+            pX = cx; pY = cy
+          }
+        }
+        ctx.strokeStyle = `hsla(${bHue},70%,60%,${al * 0.5})`
+        ctx.lineWidth = 1
+        ctx.stroke()
+
+        ctx.beginPath()
+        for (let i = 0; i < bkt.length; i++) {
+          const a = bkt[i]
+          ctx.moveTo(a.x + 1.5, a.y)
+          ctx.arc(a.x, a.y, 1.5, 0, TWO_PI)
+        }
+        ctx.fillStyle = `hsla(${bHue},80%,70%,${al})`
+        ctx.fill()
+      }
+    }
+
+    return {
+      resize(nW, nH) { W = nW; H = nH },
+      tick() {
+        time++
+        ctx.fillStyle = 'rgba(6, 6, 12, 0.1)'
+        ctx.fillRect(0, 0, W, H)
+
+        grid.clear()
+        for (let i = 0; i < agents.length; i++) grid.insert(agents[i])
+
+        const b = behaviors[behaviorMode]
+        const qR = Math.max(b.alignR, b.cohR, b.sepR)
+        for (let i = 0; i < agents.length; i++) {
+          const nLen = grid.query(agents[i].x, agents[i].y, qR, _nbrs)
+          agents[i].update(_nbrs, nLen)
+        }
+
+        batchDraw()
+      }
+    }
+  }
+})
+</script>
+</body>
+</html>

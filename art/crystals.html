@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Crystal Growth — Pattern Language</title>
+</head>
+<body>
+<script src="shell.js"></script>
+<script>
+shell({
+  num: '002',
+  title: 'Crystal Growth',
+  epigraph: 'structure seeks itself',
+  accent: 'rgba(255, 136, 85, 0.35)',
+  controls: 'click — plant crystal seed<br>spacebar — clear &amp; regrow<br>1-4 — crystal systems<br>scroll — growth speed',
+  prev: { href: 'flowfield.html', title: 'Void Currents' },
+  next: { href: 'gravity.html', title: 'Gravity Wells' },
+
+  setup(canvas, ctx, W, H) {
+    let offCanvas, offCtx, glowCanvas, glowCtx
+    let glowDirty = true
+
+    function createOffscreen() {
+      offCanvas = document.createElement('canvas')
+      offCanvas.width = W; offCanvas.height = H
+      offCtx = offCanvas.getContext('2d')
+    }
+
+    function createGlow() {
+      glowCanvas = document.createElement('canvas')
+      glowCanvas.width = Math.ceil(W / 2); glowCanvas.height = Math.ceil(H / 2)
+      glowCtx = glowCanvas.getContext('2d')
+      glowDirty = true
+    }
+
+    const systems = [
+      { angles: [0,60,120,180,240,300], branchProb: 0.35, decay: 0.72, minLen: 2, hueBase: 200, hueRange: 60 },
+      { angles: [0,90,180,270], branchProb: 0.5, decay: 0.78, minLen: 3, hueBase: 330, hueRange: 40 },
+      { angles: [0,30,-30,60,-60], branchProb: 0.28, decay: 0.68, minLen: 1.5, hueBase: 160, hueRange: 80 },
+      { angles: [0,47,133,180,227,313], branchProb: 0.32, decay: 0.7, minLen: 2, hueBase: 40, hueRange: 50 },
+    ]
+    let curSys = 0, growthSpeed = 1
+    const MAX_BRANCHES = 6000
+
+    let allBranches = [], growing = [], completed = [], newlyDone = []
+    let fullyDone = new Set(), nextId = 0
+
+    function makeBranch(x, y, aDeg, len, depth, hue, alpha, sys, pid) {
+      const aRad = aDeg * Math.PI / 180
+      return {
+        id: nextId++, x, y,
+        endX: x + Math.cos(aRad) * len, endY: y + Math.sin(aRad) * len,
+        aDeg, len, depth, hue, alpha, sys, pid,
+        children: [], grown: 0, speed: 0.5 + Math.random() * 1.5,
+        spawned: false, thickness: Math.max(0.8, (1 - depth / 13) * 4),
+        completed: false
+      }
+    }
+
+    function plantCrystal(x, y) {
+      const sys = systems[curSys]
+      const n = 1 + Math.floor(Math.random() * 3)
+      for (let i = 0; i < n; i++) {
+        const a = Math.random() * 360
+        const len = 30 + Math.random() * 60
+        const hue = sys.hueBase + (Math.random() - 0.5) * sys.hueRange
+        const b = makeBranch(x + (Math.random() - 0.5) * 10, y + (Math.random() - 0.5) * 10, a, len, 0, hue, 0.9, curSys, -1)
+        allBranches.push(b); growing.push(b)
+      }
+    }
+
+    function spawnChildren(b) {
+      const sys = systems[b.sys]
+      if (b.len < sys.minLen || b.depth > 12 || allBranches.length >= MAX_BRANCHES) return
+      for (let i = 0; i < sys.angles.length; i++) {
+        if (allBranches.length >= MAX_BRANCHES) break
+        const a = sys.angles[i]
+        if (a === 0 || Math.random() < sys.branchProb) {
+          const nA = b.aDeg + a + (Math.random() - 0.5) * 15
+          const nL = b.len * sys.decay * (0.8 + Math.random() * 0.4)
+          const nH = (b.hue + (Math.random() - 0.5) * 10) % 360
+          if (nL >= sys.minLen) {
+            const child = makeBranch(b.endX, b.endY, nA, nL, b.depth + 1, nH, b.alpha * 0.92, b.sys, b.id)
+            b.children.push(child.id)
+            allBranches.push(child); growing.push(child)
+          }
+        }
+      }
+    }
+
+    function batchDrawBranches(tCtx, branches) {
+      if (branches.length === 0) return
+      const buckets = new Map()
+      for (let i = 0; i < branches.length; i++) {
+        const b = branches[i]
+        const rh = Math.round(b.hue / 5) * 5
+        const ra = Math.round(b.alpha * b.grown * 20) / 20
+        const rt = Math.round(b.thickness * 2) / 2
+        const key = rh + '|' + ra + '|' + rt
+        let bkt = buckets.get(key)
+        if (!bkt) { bkt = { hue: rh, alpha: ra, thickness: rt, items: [] }; buckets.set(key, bkt) }
+        bkt.items.push(b)
+      }
+      tCtx.lineCap = 'round'
+      for (const [, bkt] of buckets) {
+        if (bkt.alpha <= 0) continue
+        tCtx.beginPath()
+        for (let i = 0; i < bkt.items.length; i++) {
+          const b = bkt.items[i]
+          const cx = b.x + (b.endX - b.x) * b.grown, cy = b.y + (b.endY - b.y) * b.grown
+          tCtx.moveTo(b.x, b.y); tCtx.lineTo(cx, cy)
+        }
+        tCtx.strokeStyle = `hsla(${bkt.hue},75%,75%,${Math.min(1, bkt.alpha * 1.15)})`
+        tCtx.lineWidth = bkt.thickness
+        tCtx.stroke()
+      }
+    }
+
+    function updateBranches() {
+      const still = []
+      for (let i = 0; i < growing.length; i++) {
+        const b = growing[i]
+        if (b.grown < 1) b.grown = Math.min(1, b.grown + b.speed * growthSpeed * 0.018)
+        if (b.grown >= 1 && !b.spawned) { b.spawned = true; spawnChildren(b) }
+        if (b.grown < 1) still.push(b)
+      }
+      growing = still
+      promoteCompleted()
+    }
+
+    function promoteCompleted() {
+      newlyDone.length = 0
+      for (let i = allBranches.length - 1; i >= 0; i--) {
+        const b = allBranches[i]
+        if (b.completed || fullyDone.has(b.id)) continue
+        if (b.grown < 1 || !b.spawned) continue
+        let allDone = true
+        for (let j = 0; j < b.children.length; j++) {
+          if (!fullyDone.has(b.children[j])) { allDone = false; break }
+        }
+        if (allDone) {
+          fullyDone.add(b.id)
+          if (!b.completed) { b.completed = true; newlyDone.push(b); completed.push(b) }
+        }
+      }
+      if (newlyDone.length > 0) batchDrawBranches(offCtx, newlyDone)
+    }
+
+    let unbaked = []
+    function rebuildUnbaked() {
+      unbaked = []
+      for (let i = 0; i < allBranches.length; i++) {
+        const b = allBranches[i]
+        if (b.grown >= 1 && !b.completed) unbaked.push(b)
+      }
+    }
+
+    canvas.addEventListener('click', e => plantCrystal(e.clientX, e.clientY))
+    window.addEventListener('keydown', e => {
+      if (e.key === ' ') {
+        e.preventDefault()
+        allBranches = []; growing = []; completed = []; unbaked = []
+        fullyDone.clear(); nextId = 0
+        offCtx.clearRect(0, 0, W, H); glowDirty = true
+        ctx.fillStyle = '#06060c'; ctx.fillRect(0, 0, W, H)
+        plantCrystal(W / 2, H / 2)
+      }
+      if (e.key >= '1' && e.key <= '4') curSys = parseInt(e.key) - 1
+    })
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault()
+      growthSpeed = Math.max(0.1, Math.min(5, growthSpeed - e.deltaY * 0.001))
+    }, { passive: false })
+
+    createOffscreen(); createGlow()
+    plantCrystal(W / 2, H / 2)
+    plantCrystal(W * 0.25, H * 0.4)
+    plantCrystal(W * 0.75, H * 0.6)
+
+    return {
+      resize(nW, nH) {
+        W = nW; H = nH
+        createOffscreen(); createGlow()
+        offCtx.clearRect(0, 0, W, H)
+        if (completed.length > 0) batchDrawBranches(offCtx, completed)
+      },
+      tick() {
+        const hadGrowing = growing.length > 0
+        updateBranches()
+        if (hadGrowing || newlyDone.length > 0) rebuildUnbaked()
+        if (newlyDone.length > 0) glowDirty = true
+
+        ctx.clearRect(0, 0, W, H)
+        ctx.fillStyle = '#06060c'
+        ctx.fillRect(0, 0, W, H)
+
+        if (completed.length > 0) {
+          if (glowDirty) {
+            glowDirty = false
+            const gw = glowCanvas.width, gh = glowCanvas.height
+            glowCtx.clearRect(0, 0, gw, gh)
+            glowCtx.filter = 'blur(6px)'; glowCtx.globalAlpha = 0.35
+            glowCtx.drawImage(offCanvas, 0, 0, gw, gh)
+            glowCtx.filter = 'none'; glowCtx.globalAlpha = 1
+          }
+          ctx.drawImage(glowCanvas, 0, 0, W, H)
+        }
+
+        try { ctx.drawImage(offCanvas, 0, 0) }
+        catch(e) { if (completed.length > 0) batchDrawBranches(ctx, completed) }
+
+        if (unbaked.length > 0) batchDrawBranches(ctx, unbaked)
+
+        // growing branches + glowing tips
+        if (growing.length > 0) {
+          const gBkts = new Map()
+          for (let i = 0; i < growing.length; i++) {
+            const b = growing[i]
+            if (b.grown <= 0) continue
+            const key = Math.round(b.hue / 5) * 5 + '|' + Math.round(b.alpha * b.grown * 20) / 20 + '|' + Math.round(b.thickness * 2) / 2
+            let bkt = gBkts.get(key)
+            if (!bkt) { bkt = { hue: Math.round(b.hue / 5) * 5, alpha: Math.round(b.alpha * b.grown * 20) / 20, thickness: Math.round(b.thickness * 2) / 2, items: [] }; gBkts.set(key, bkt) }
+            bkt.items.push(b)
+          }
+          ctx.lineCap = 'round'
+          for (const [, bkt] of gBkts) {
+            if (bkt.alpha <= 0) continue
+            ctx.beginPath()
+            for (let i = 0; i < bkt.items.length; i++) {
+              const b = bkt.items[i]
+              const cx = b.x + (b.endX - b.x) * b.grown, cy = b.y + (b.endY - b.y) * b.grown
+              ctx.moveTo(b.x, b.y); ctx.lineTo(cx, cy)
+            }
+            ctx.strokeStyle = `hsla(${bkt.hue},70%,70%,${bkt.alpha})`
+            ctx.lineWidth = bkt.thickness
+            ctx.stroke()
+          }
+
+          // glowing tips
+          for (let i = 0; i < growing.length; i++) {
+            const b = growing[i]
+            if (b.grown <= 0 || b.grown >= 1) continue
+            const cx = b.x + (b.endX - b.x) * b.grown, cy = b.y + (b.endY - b.y) * b.grown
+            const ta = (1 - b.grown) * b.alpha * 0.8
+            if (ta <= 0.01) continue
+            ctx.beginPath()
+            ctx.arc(cx, cy, b.thickness + 2, 0, Math.PI * 2)
+            ctx.fillStyle = `hsla(${Math.round(b.hue / 10) * 10},90%,85%,${ta})`
+            ctx.fill()
+          }
+        }
+
+        if (allBranches.length > 10 && completed.length === 0 && growing.length === 0 && unbaked.length === 0) {
+          batchDrawBranches(ctx, allBranches)
+        }
+      }
+    }
+  }
+})
+</script>
+</body>
+</html>

@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Interference Patterns — Pattern Language</title>
+</head>
+<body>
+<script src="shell.js"></script>
+<script>
+shell({
+  num: '004',
+  title: 'Interference Patterns',
+  epigraph: 'where waves meet, information lives',
+  accent: 'rgba(68, 204, 170, 0.35)',
+  controls: 'mouse &mdash; wave source follows cursor<br>click &mdash; place permanent source<br>1-4 &mdash; color modes<br>scroll &mdash; frequency<br>space &mdash; clear sources',
+  prev: { href: 'gravity.html', title: 'Gravity Wells' },
+  next: { href: 'terrain.html', title: 'Living Terrain' },
+
+  setup(canvas, ctx, W, H) {
+    const SCALE = 4
+    let sw, sh, offscreen, offCtx, imageData, data
+
+    function rebuildOff() {
+      sw = Math.floor(W / SCALE); sh = Math.floor(H / SCALE)
+      offscreen = document.createElement('canvas')
+      offscreen.width = sw; offscreen.height = sh
+      offCtx = offscreen.getContext('2d')
+      imageData = new ImageData(sw, sh)
+      data = imageData.data
+    }
+    rebuildOff()
+
+    // sin lookup
+    const SIN_N = 4096, SIN_MASK = SIN_N - 1
+    const SIN_T = new Float32Array(SIN_N)
+    const TWO_PI = Math.PI * 2, SIN_SC = SIN_N / TWO_PI
+    for (let i = 0; i < SIN_N; i++) SIN_T[i] = Math.sin(i / SIN_N * TWO_PI)
+    function fsin(x) { return SIN_T[((x * SIN_SC) % SIN_N + SIN_N) & SIN_MASK] }
+
+    // fast sqrt
+    const _f32 = new Float32Array(1), _i32 = new Int32Array(_f32.buffer)
+    function fsqrt(x) {
+      _f32[0] = x; _i32[0] = 0x1FBD1DF5 + (_i32[0] >> 1)
+      const y = _f32[0]; return (y + x / y) * 0.5
+    }
+
+    const MAX_SRC = 64
+    const allSrc = new Array(MAX_SRC)
+    let allSrcN = 0
+
+    let sources = []
+    let mouseSrc = { x: W / 2, y: H / 2, freq: 0.04, phase: 0, amp: 1 }
+    let time = 0, frequency = 0.04, colorMode = 0
+
+    function hslToRgb(h, s, l) {
+      s /= 100; l /= 100
+      const c = (1 - Math.abs(2 * l - 1)) * s
+      const x = c * (1 - Math.abs((h / 60) % 2 - 1))
+      const m = l - c / 2
+      let r, g, b
+      if (h < 60) { r = c; g = x; b = 0 }
+      else if (h < 120) { r = x; g = c; b = 0 }
+      else if (h < 180) { r = 0; g = c; b = x }
+      else if (h < 240) { r = 0; g = x; b = c }
+      else if (h < 300) { r = x; g = 0; b = c }
+      else { r = c; g = 0; b = x }
+      return [(r + m) * 255, (g + m) * 255, (b + m) * 255]
+    }
+
+    const colorModes = [
+      v => { const b = (v * 0.5 + 0.5) * 255; return [b, b, b] },
+      v => { const h = ((v * 0.5 + 0.5) * 360 + time * 0.5) % 360; return hslToRgb(h, 80, 50 + v * 30) },
+      v => { const t = v * 0.5 + 0.5; return [Math.min(255, t * 3 * 255), Math.min(255, Math.max(0, (t - 0.33) * 3 * 255)), Math.min(255, Math.max(0, (t - 0.66) * 3 * 255))] },
+      v => { const t = v * 0.5 + 0.5; return [t * t * 80, t * 180 + fsin(t * Math.PI) * 50, 100 + t * 155] }
+    ]
+
+    sources.push({ x: W * 0.3, y: H * 0.4, freq: frequency, phase: 0, amp: 1 })
+    sources.push({ x: W * 0.7, y: H * 0.6, freq: frequency, phase: 0, amp: 1 })
+    sources.push({ x: W * 0.5, y: H * 0.2, freq: frequency * 1.2, phase: 0, amp: 0.8 })
+
+    canvas.addEventListener('mousemove', e => { mouseSrc.x = e.clientX; mouseSrc.y = e.clientY })
+    canvas.addEventListener('click', e => {
+      sources.push({ x: e.clientX, y: e.clientY, freq: frequency * (0.8 + Math.random() * 0.4), phase: Math.random() * TWO_PI, amp: 0.7 + Math.random() * 0.6 })
+    })
+    window.addEventListener('keydown', e => {
+      if (e.key === ' ') { e.preventDefault(); sources = [] }
+      if (e.key >= '1' && e.key <= '4') colorMode = parseInt(e.key) - 1
+    })
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault()
+      frequency = Math.max(0.01, Math.min(0.12, frequency + e.deltaY * -0.0001))
+      mouseSrc.freq = frequency
+    }, { passive: false })
+
+    return {
+      resize(nW, nH) { W = nW; H = nH; rebuildOff() },
+      tick() {
+        time++
+        allSrcN = 0
+        for (let i = 0; i < sources.length; i++) allSrc[allSrcN++] = sources[i]
+        allSrc[allSrcN++] = mouseSrc
+
+        const colorFn = colorModes[colorMode]
+        const invNorm = 1 / Math.sqrt(allSrcN)
+        const tPhase = time * 0.05
+
+        const sX = new Float64Array(allSrcN), sY = new Float64Array(allSrcN)
+        const sF = new Float64Array(allSrcN), sP = new Float64Array(allSrcN)
+        const sA = new Float64Array(allSrcN)
+        for (let s = 0; s < allSrcN; s++) {
+          const src = allSrc[s]
+          sX[s] = src.x; sY[s] = src.y; sF[s] = src.freq
+          sP[s] = src.phase - tPhase; sA[s] = src.amp
+        }
+
+        for (let py = 0; py < sh; py++) {
+          const wY = py * SCALE, rOff = py * sw
+          for (let px = 0; px < sw; px++) {
+            const wX = px * SCALE
+            let val = 0
+            for (let s = 0; s < allSrcN; s++) {
+              const dx = wX - sX[s], dy = wY - sY[s]
+              const dist = fsqrt(dx * dx + dy * dy + 0.01)
+              val += fsin(dist * sF[s] + sP[s]) * (1 / (1 + dist * 0.003)) * sA[s]
+            }
+            val *= invNorm
+            if (val > 1) val = 1; else if (val < -1) val = -1
+
+            const rgb = colorFn(val)
+            const idx = (rOff + px) << 2
+            data[idx] = rgb[0]; data[idx + 1] = rgb[1]; data[idx + 2] = rgb[2]; data[idx + 3] = 255
+          }
+        }
+
+        offCtx.putImageData(imageData, 0, 0)
+        ctx.imageSmoothingEnabled = true
+        ctx.imageSmoothingQuality = 'medium'
+        ctx.drawImage(offscreen, 0, 0, W, H)
+
+        // source indicators
+        ctx.fillStyle = 'rgba(255,255,255,0.6)'
+        ctx.strokeStyle = 'rgba(255,255,255,0.2)'
+        ctx.lineWidth = 1
+        const pulseR = 8 + fsin(time * 0.05) * 3
+        for (let s = 0; s < allSrcN; s++) {
+          const sx = allSrc[s].x, sy = allSrc[s].y
+          ctx.beginPath(); ctx.arc(sx, sy, 4, 0, Math.PI * 2); ctx.fill()
+          ctx.beginPath(); ctx.arc(sx, sy, pulseR, 0, Math.PI * 2); ctx.stroke()
+        }
+      }
+    }
+  }
+})
+</script>
+</body>
+</html>

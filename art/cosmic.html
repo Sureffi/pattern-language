@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>006 — Cosmic Web</title>
+</head>
+<body>
+<script src="spatial.js"></script>
+<script src="shell.js"></script>
+<script>
+shell({
+  num: '006',
+  title: 'Cosmic Web',
+  epigraph: 'connection is the fundamental force',
+  accent: 'rgba(85, 153, 255, 0.35)',
+  cursor: 'default',
+  controls: 'mouse — gravitational lens<br>click — birth a galaxy cluster<br>scroll — connection distance<br>spacebar — big bang (reset)<br>1-3 — visualization mode',
+  prev: { href: 'terrain.html', title: 'Living Terrain' },
+  next: { href: 'emergence.html', title: 'Emergence' },
+
+  setup(canvas, ctx, W, H) {
+    const MAX_NODES = 250, FIL_COUNT = 1200
+    let connDist = 180, mouseX = W / 2, mouseY = H / 2
+    let visualMode = 0, time = 0
+
+    // glow sprite
+    const GLOW_SZ = 64, glowC = document.createElement('canvas')
+    glowC.width = glowC.height = GLOW_SZ
+    const glowX = glowC.getContext('2d'), gh = GLOW_SZ / 2
+    const gg = glowX.createRadialGradient(gh, gh, 0, gh, gh, gh)
+    gg.addColorStop(0, 'rgba(255,255,255,1)')
+    gg.addColorStop(0.12, 'rgba(255,255,255,0.55)')
+    gg.addColorStop(0.5, 'rgba(255,255,255,0.18)')
+    gg.addColorStop(1, 'rgba(255,255,255,0)')
+    glowX.fillStyle = gg; glowX.fillRect(0, 0, GLOW_SZ, GLOW_SZ)
+
+    function hsla(h, s, l, a) { return `hsla(${h|0},${s}%,${l}%,${a.toFixed(3)})` }
+
+    // connection grid + cache
+    let gridCS = 180, gridCols, gridRows, grid = []
+    let conns = [], connAge = 0
+    const CONN_LIFE = 12
+
+    function rebuildGrid() {
+      gridCS = Math.max(connDist, 50)
+      gridCols = Math.ceil(W / gridCS) + 1
+      gridRows = Math.ceil(H / gridCS) + 1
+      grid = new Array(gridCols * gridRows)
+      for (let i = 0; i < grid.length; i++) grid[i] = []
+    }
+
+    function populateGrid() {
+      for (let i = 0; i < grid.length; i++) grid[i].length = 0
+      for (let i = 0; i < nodes.length; i++) {
+        const n = nodes[i]
+        const c = Math.floor(n.x / gridCS), r = Math.floor(n.y / gridCS)
+        if (c >= 0 && c < gridCols && r >= 0 && r < gridRows)
+          grid[r * gridCols + c].push(i)
+      }
+    }
+
+    function recalcConns() {
+      conns.length = 0
+      const cd2 = connDist * connDist
+      for (let row = 0; row < gridRows; row++) {
+        for (let col = 0; col < gridCols; col++) {
+          const ci = row * gridCols + col
+          const cellA = grid[ci]
+          if (cellA.length === 0) continue
+
+          for (let p = 0; p < cellA.length; p++) {
+            const ai = cellA[p], a = nodes[ai]
+            for (let q = p + 1; q < cellA.length; q++) {
+              const bi = cellA[q], b = nodes[bi]
+              const dx = b.x - a.x, dy = b.y - a.y, d2 = dx*dx + dy*dy
+              if (d2 < cd2) { const d = Math.sqrt(d2); conns.push({ai,bi,dist:d,alpha:1-d/connDist}) }
+            }
+          }
+
+          const nbs = []
+          if (col+1 < gridCols) nbs.push(ci+1)
+          if (row+1 < gridRows) {
+            if (col-1 >= 0) nbs.push((row+1)*gridCols+col-1)
+            nbs.push((row+1)*gridCols+col)
+            if (col+1 < gridCols) nbs.push((row+1)*gridCols+col+1)
+          }
+          for (let ni = 0; ni < nbs.length; ni++) {
+            const cellB = grid[nbs[ni]]
+            for (let p = 0; p < cellA.length; p++) {
+              const ai = cellA[p], a = nodes[ai]
+              for (let q = 0; q < cellB.length; q++) {
+                const bi = cellB[q], b = nodes[bi]
+                const dx = b.x-a.x, dy = b.y-a.y, d2 = dx*dx+dy*dy
+                if (d2 < cd2) { const d = Math.sqrt(d2); conns.push({ai,bi,dist:d,alpha:1-d/connDist}) }
+              }
+            }
+          }
+        }
+      }
+      connAge = 0
+    }
+
+    class Node {
+      constructor(x, y, mass) {
+        this.x = x || Math.random() * W; this.y = y || Math.random() * H
+        this.vx = (Math.random() - 0.5) * 0.3; this.vy = (Math.random() - 0.5) * 0.3
+        this.mass = mass || 1 + Math.random() * 3
+        this.hue = 200 + Math.random() * 60; this.age = 0
+        this.phase = Math.random() * Math.PI * 2
+      }
+      update() {
+        this.age++; this.phase += 0.02
+        this.x += this.vx; this.y += this.vy
+        const dx = mouseX - this.x, dy = mouseY - this.y
+        const dist = Math.sqrt(dx*dx + dy*dy)
+        if (dist < 300 && dist > 10) {
+          const f = 0.005 / (dist * 0.1)
+          this.vx += (dx/dist)*f; this.vy += (dy/dist)*f
+        }
+        this.vx *= 0.995; this.vy *= 0.995
+        const m = 50
+        if (this.x < m) this.vx += 0.02; if (this.x > W-m) this.vx -= 0.02
+        if (this.y < m) this.vy += 0.02; if (this.y > H-m) this.vy -= 0.02
+      }
+    }
+
+    // repulsion via temporary spatial grid
+    const REP_D = 40, REP_D2 = REP_D * REP_D
+    let repCells = null, repCap = 0
+
+    function applyRepulsion() {
+      const cs = REP_D
+      const rC = Math.ceil(W/cs)+1, rR = Math.ceil(H/cs)+1, total = rC*rR
+      if (!repCells || repCap < total) { repCap = total; repCells = new Array(repCap); for (let i=0;i<repCap;i++) repCells[i]=[] }
+      for (let i=0;i<total;i++) repCells[i].length = 0
+
+      for (let i=0;i<nodes.length;i++) {
+        const n=nodes[i], c=Math.floor(n.x/cs), r=Math.floor(n.y/cs)
+        if (c>=0&&c<rC&&r>=0&&r<rR) repCells[r*rC+c].push(i)
+      }
+
+      function repel(ai, bi) {
+        const a=nodes[ai], b=nodes[bi]
+        const dx=b.x-a.x, dy=b.y-a.y, d2=dx*dx+dy*dy
+        if (d2<REP_D2&&d2>0) {
+          const d=Math.sqrt(d2), f=0.02/d, fx=(dx/d)*f, fy=(dy/d)*f
+          a.vx-=fx; a.vy-=fy; b.vx+=fx; b.vy+=fy
+        }
+      }
+
+      for (let row=0;row<rR;row++) {
+        for (let col=0;col<rC;col++) {
+          const ci=row*rC+col, cA=repCells[ci]
+          if (cA.length===0) continue
+          for (let p=0;p<cA.length;p++) for (let q=p+1;q<cA.length;q++) repel(cA[p],cA[q])
+          const nbs=[]
+          if (col+1<rC) nbs.push(ci+1)
+          if (row+1<rR) { if(col-1>=0) nbs.push((row+1)*rC+col-1); nbs.push((row+1)*rC+col); if(col+1<rC) nbs.push((row+1)*rC+col+1) }
+          for (let ni=0;ni<nbs.length;ni++) {
+            const cB=repCells[nbs[ni]]
+            for (let p=0;p<cA.length;p++) for (let q=0;q<cB.length;q++) repel(cA[p],cB[q])
+          }
+        }
+      }
+    }
+
+    class Filament {
+      constructor() { this.progress=0; this.speed=0; this.alpha=0; this.size=0; this.nA=0; this.nB=0; this.hA=220; this.hB=220; this.reset() }
+      reset() {
+        this.progress=0; this.speed=0.002+Math.random()*0.008
+        this.alpha=0.3+Math.random()*0.5; this.size=0.5+Math.random()*1.5
+        this.assign()
+      }
+      assign() {
+        if (conns.length>0) { const c=conns[(Math.random()*conns.length)|0]; this.nA=c.ai; this.nB=c.bi }
+        else { this.nA=(Math.random()*nodes.length)|0; this.nB=(Math.random()*nodes.length)|0 }
+        if (this.nA<nodes.length) this.hA=nodes[this.nA].hue
+        if (this.nB<nodes.length) this.hB=nodes[this.nB].hue
+      }
+      update() { this.progress+=this.speed; if (this.progress>1) this.reset() }
+    }
+
+    let nodes = [], filaments = []
+
+    function init() {
+      nodes = []; filaments = []
+      const nClust = 5 + Math.floor(Math.random()*4)
+      const centers = []
+      for (let i=0;i<nClust;i++) centers.push({x:W*0.15+Math.random()*W*0.7, y:H*0.15+Math.random()*H*0.7})
+
+      for (let i=0;i<MAX_NODES;i++) {
+        const cl = centers[Math.floor(Math.random()*nClust)]
+        const spread = 80+Math.random()*150, a = Math.random()*Math.PI*2, d = Math.random()*spread
+        nodes.push(new Node(cl.x+Math.cos(a)*d, cl.y+Math.sin(a)*d, Math.random()<0.1?3+Math.random()*5:1+Math.random()*2))
+      }
+      for (let i=0;i<FIL_COUNT;i++) filaments.push(new Filament())
+
+      rebuildGrid(); populateGrid(); recalcConns()
+      for (let i=0;i<filaments.length;i++) { filaments[i].assign(); filaments[i].progress=Math.random() }
+    }
+
+    const A_BKTS = 8
+
+    function drawConns() {
+      for (let b=0;b<A_BKTS;b++) {
+        const aLo=b/A_BKTS, aHi=(b+1)/A_BKTS, aMid=(aLo+aHi)*0.5
+        if (aMid<0.01) continue
+        ctx.beginPath()
+        let drawn=false, avgH=0, hCnt=0
+
+        for (let ci=0;ci<conns.length;ci++) {
+          const c=conns[ci]
+          if (c.alpha<aLo||c.alpha>=aHi) continue
+          const a=nodes[c.ai], b2=nodes[c.bi]
+          if (!a||!b2) continue
+
+          if (visualMode===0) {
+            const mx=(a.x+b2.x)*0.5+(a.y-b2.y)*0.08, my=(a.y+b2.y)*0.5+(b2.x-a.x)*0.08
+            ctx.moveTo(a.x,a.y); ctx.quadraticCurveTo(mx,my,b2.x,b2.y)
+          } else {
+            ctx.moveTo(a.x,a.y); ctx.lineTo(b2.x,b2.y)
+          }
+          avgH+=(a.hue+b2.hue); hCnt++; drawn=true
+        }
+
+        if (drawn) {
+          avgH = hCnt>0?avgH/(hCnt*2):220
+          if (visualMode===0) { ctx.strokeStyle=hsla(avgH,40,50,aMid*0.12); ctx.lineWidth=0.5+aMid*2 }
+          else if (visualMode===1) {
+            const pulse=Math.sin(time*0.02+b*0.5)*0.5+0.5
+            ctx.strokeStyle=hsla(avgH+pulse*40,70,60,aMid*0.15*(0.5+pulse*0.5)); ctx.lineWidth=0.5+aMid*1.5
+          } else {
+            ctx.strokeStyle=`rgba(255,255,255,${(aMid*0.08).toFixed(3)})`; ctx.lineWidth=0.5
+          }
+          ctx.stroke()
+        }
+      }
+    }
+
+    function drawNodes() {
+      for (let i=0;i<nodes.length;i++) {
+        const n=nodes[i], pulse=Math.sin(n.phase)*0.3+0.7
+        const r=n.mass*1.5*pulse, gr=r*4, ds=gr*2
+        ctx.globalAlpha=0.15*pulse
+        ctx.drawImage(glowC,n.x-gr,n.y-gr,ds,ds)
+        ctx.globalAlpha=1
+        ctx.beginPath(); ctx.arc(n.x,n.y,r,0,Math.PI*2)
+        ctx.fillStyle=hsla(n.hue,50,85,0.6+pulse*0.3); ctx.fill()
+      }
+    }
+
+    const FIL_BANDS = 4
+
+    function drawFilaments() {
+      const bw = 60/FIL_BANDS
+      const bands = []
+      for (let b=0;b<FIL_BANDS;b++) bands.push({hue:200+(b+0.5)*bw, xs:[], ys:[], sizes:[], alphas:[]})
+
+      for (let i=0;i<filaments.length;i++) {
+        const f=filaments[i]
+        if (f.nA>=nodes.length||f.nB>=nodes.length) continue
+        const a=nodes[f.nA], b=nodes[f.nB]
+        if (!a||!b) continue
+        const t=f.progress, omt=1-t
+        const mx=(a.x+b.x)*0.5+(a.y-b.y)*0.1, my=(a.y+b.y)*0.5+(b.x-a.x)*0.1
+        const x=omt*omt*a.x+2*omt*t*mx+t*t*b.x
+        const y=omt*omt*a.y+2*omt*t*my+t*t*b.y
+        const hue=f.hA+(f.hB-f.hA)*t
+        const fade=Math.sin(t*Math.PI)
+        const band=Math.min(FIL_BANDS-1, Math.max(0,((hue-200)/bw)|0))
+        const bp=bands[band]
+        bp.xs.push(x); bp.ys.push(y); bp.sizes.push(f.size); bp.alphas.push(f.alpha*fade)
+      }
+
+      for (let b=0;b<FIL_BANDS;b++) {
+        const bp=bands[b]
+        if (bp.xs.length===0) continue
+        let totA=0; for (let i=0;i<bp.alphas.length;i++) totA+=bp.alphas[i]
+        const avgA=totA/bp.alphas.length
+        ctx.beginPath()
+        for (let i=0;i<bp.xs.length;i++) {
+          const x=bp.xs[i],y=bp.ys[i],s=bp.sizes[i]
+          ctx.moveTo(x+s,y); ctx.arc(x,y,s,0,Math.PI*2)
+        }
+        ctx.fillStyle=hsla(bp.hue,60,70,avgA); ctx.fill()
+      }
+    }
+
+    canvas.addEventListener('mousemove', e => { mouseX=e.clientX; mouseY=e.clientY })
+    canvas.addEventListener('click', e => {
+      const num = 5+Math.floor(Math.random()*10)
+      for (let i=0;i<num;i++) {
+        const a=Math.random()*Math.PI*2, d=Math.random()*60
+        if (nodes.length<MAX_NODES+200) nodes.push(new Node(e.clientX+Math.cos(a)*d,e.clientY+Math.sin(a)*d,1+Math.random()*3))
+      }
+      for (let i=0;i<50;i++) filaments.push(new Filament())
+      connAge=CONN_LIFE
+    })
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault()
+      connDist=Math.max(50,Math.min(400,connDist+e.deltaY*-0.3))
+      rebuildGrid(); connAge=CONN_LIFE
+    }, {passive:false})
+    window.addEventListener('keydown', e => {
+      if (e.key===' ') { e.preventDefault(); init() }
+      if (e.key==='1') visualMode=0
+      if (e.key==='2') visualMode=1
+      if (e.key==='3') visualMode=2
+    })
+
+    init()
+
+    return {
+      resize(nW, nH) {
+        W=nW; H=nH; rebuildGrid()
+      },
+      tick() {
+        time++
+        ctx.fillStyle='rgba(6, 6, 12, 0.15)'
+        ctx.fillRect(0,0,W,H)
+
+        for (let i=0;i<nodes.length;i++) nodes[i].update()
+        applyRepulsion()
+        for (let i=0;i<filaments.length;i++) filaments[i].update()
+        populateGrid()
+        connAge++
+        if (connAge>=CONN_LIFE) recalcConns()
+
+        drawConns()
+        drawFilaments()
+        drawNodes()
+      }
+    }
+  }
+})
+</script>
+</body>
+</html>

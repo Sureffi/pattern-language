@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Gravity Wells — Pattern Language</title>
+</head>
+<body>
+<script src="shell.js"></script>
+<script>
+shell({
+  num: '003',
+  title: 'Gravity Wells',
+  epigraph: 'mass bends space, space moves mass',
+  accent: 'rgba(170, 110, 255, 0.35)',
+  controls: [
+    'click &mdash; place gravity well',
+    'right-click &mdash; anti-gravity well',
+    'shift+click &mdash; massive well',
+    'space &mdash; reset universe',
+    'scroll &mdash; particle count'
+  ].join('<br>'),
+  prev: { href: 'crystals.html', title: 'Crystal Growth' },
+  next: { href: 'waves.html', title: 'Interference Patterns' },
+
+  setup(canvas, ctx, W, H) {
+    const G = 1400
+    let wells = [], particles = [], NUM_P = 800
+
+    // well glow sprite cache
+    const spriteCache = new Map()
+    const SPR_SZ = 64
+
+    function getSprite(hue, isAnti) {
+      const bh = Math.round(hue / 10) * 10
+      const key = bh + (isAnti ? '_a' : '')
+      if (spriteCache.has(key)) return spriteCache.get(key)
+
+      const half = SPR_SZ / 2
+      const oc = document.createElement('canvas')
+      oc.width = oc.height = SPR_SZ
+      const ox = oc.getContext('2d')
+
+      for (let i = 5; i > 0; i--) {
+        const r = 8 + i * (isAnti ? 8 : 5)
+        ox.beginPath()
+        ox.arc(half, half, r, 0, Math.PI * 2)
+        ox.strokeStyle = `hsla(${bh},80%,${isAnti ? 40 : 60}%,${0.05 * (6 - i)})`
+        ox.lineWidth = isAnti ? 1 : 1.5
+        if (isAnti) ox.setLineDash([3, 3])
+        ox.stroke()
+        ox.setLineDash([])
+      }
+
+      const grad = ox.createRadialGradient(half, half, 0, half, half, 13)
+      grad.addColorStop(0, `hsla(${bh},90%,90%,0.9)`)
+      grad.addColorStop(0.5, `hsla(${bh},80%,60%,0.5)`)
+      grad.addColorStop(1, `hsla(${bh},80%,40%,0)`)
+      ox.beginPath()
+      ox.arc(half, half, 13, 0, Math.PI * 2)
+      ox.fillStyle = grad
+      ox.fill()
+
+      spriteCache.set(key, oc)
+      return oc
+    }
+
+    // hue bucketing
+    const NUM_HB = 16, HB_SZ = 360 / NUM_HB
+    const hueBkts = new Array(NUM_HB)
+    for (let i = 0; i < NUM_HB; i++) hueBkts[i] = []
+
+    class Well {
+      constructor(x, y, mass, hue) {
+        this.x = x; this.y = y; this.mass = mass; this.hue = hue
+        this.phase = Math.random() * Math.PI * 2; this.age = 0
+      }
+      draw() {
+        this.age++; this.phase += 0.03
+        const pulse = 1 + Math.sin(this.phase) * 0.3
+        const radius = Math.abs(this.mass) * 0.15 * pulse
+        const sprite = getSprite(this.hue, this.mass < 0)
+        const scale = radius / 8
+        const ds = SPR_SZ * scale, hds = ds / 2
+        ctx.drawImage(sprite, this.x - hds, this.y - hds, ds, ds)
+      }
+    }
+
+    const MAX_TRAIL = 35
+
+    class Particle {
+      constructor() {
+        this.trailX = new Float32Array(MAX_TRAIL)
+        this.trailY = new Float32Array(MAX_TRAIL)
+        this.tHead = 0; this.tCount = 0; this.maxTrail = 0
+        this.speed = 0; this.hue = 0; this.hueBkt = 0
+        this.x = 0; this.y = 0; this.vx = 0; this.vy = 0; this.mass = 0
+        this.reset()
+      }
+
+      reset() {
+        if (wells.length > 0 && Math.random() < 0.4) {
+          const w = wells[Math.floor(Math.random() * wells.length)]
+          const d = 40 + Math.random() * 200, a = Math.random() * Math.PI * 2
+          this.x = w.x + Math.cos(a) * d; this.y = w.y + Math.sin(a) * d
+        } else {
+          const edge = Math.random()
+          if (edge < 0.25) { this.x = 0; this.y = Math.random() * H }
+          else if (edge < 0.5) { this.x = W; this.y = Math.random() * H }
+          else if (edge < 0.75) { this.x = Math.random() * W; this.y = 0 }
+          else { this.x = Math.random() * W; this.y = H }
+        }
+        const angle = Math.atan2(H / 2 - this.y, W / 2 - this.x) + (Math.random() - 0.5) * 2
+        const spd = 0.5 + Math.random()
+        this.vx = Math.cos(angle) * spd; this.vy = Math.sin(angle) * spd
+        this.mass = 0.5 + Math.random() * 0.5
+        this.hue = 0; this.speed = spd
+        this.maxTrail = 15 + Math.floor(Math.random() * 20)
+        this.tHead = 0; this.tCount = 0
+      }
+
+      pushTrail() {
+        this.trailX[this.tHead] = this.x; this.trailY[this.tHead] = this.y
+        this.tHead = (this.tHead + 1) % this.maxTrail
+        if (this.tCount < this.maxTrail) this.tCount++
+      }
+
+      update() {
+        let fx = 0, fy = 0, closestD2 = Infinity, closestW = null
+        for (let i = 0; i < wells.length; i++) {
+          const w = wells[i]
+          const dx = w.x - this.x, dy = w.y - this.y
+          const d2 = dx * dx + dy * dy
+          if (d2 < 25) { this.reset(); return }
+          const inv = 1 / Math.sqrt(d2)
+          const f = (G * w.mass * this.mass) / (d2 + 500)
+          fx += dx * inv * f; fy += dy * inv * f
+          if (d2 < closestD2) { closestD2 = d2; closestW = w }
+        }
+
+        this.vx += fx * 0.001; this.vy += fy * 0.001
+        const ss = this.vx * this.vx + this.vy * this.vy
+        if (ss > 64) {
+          const inv = 8 / Math.sqrt(ss)
+          this.vx *= inv; this.vy *= inv; this.speed = 8
+        } else {
+          this.speed = Math.sqrt(ss)
+        }
+
+        this.x += this.vx; this.y += this.vy
+        if (closestW) this.hue = closestW.hue + Math.sqrt(closestD2) * 0.1
+        this.hueBkt = Math.floor(((this.hue % 360 + 360) % 360) / HB_SZ)
+        if (this.hueBkt >= NUM_HB) this.hueBkt = NUM_HB - 1
+        this.pushTrail()
+
+        if (this.x < -200 || this.x > W + 200 || this.y < -200 || this.y > H + 200) this.reset()
+      }
+    }
+
+    function initParticles() {
+      particles = []
+      for (let i = 0; i < NUM_P; i++) particles.push(new Particle())
+    }
+
+    wells.push(new Well(W * 0.35, H * 0.5, 140, 220))
+    wells.push(new Well(W * 0.65, H * 0.5, 140, 30))
+    wells.push(new Well(W * 0.5, H * 0.35, 100, 160))
+    initParticles()
+
+    canvas.addEventListener('click', e => {
+      const m = e.shiftKey ? 200 : 60 + Math.random() * 60
+      wells.push(new Well(e.clientX, e.clientY, m, Math.random() * 360))
+    })
+    canvas.addEventListener('contextmenu', e => {
+      e.preventDefault()
+      const m = e.shiftKey ? -200 : -(60 + Math.random() * 60)
+      wells.push(new Well(e.clientX, e.clientY, m, Math.random() * 360))
+    })
+    window.addEventListener('keydown', e => {
+      if (e.key === ' ') {
+        e.preventDefault()
+        wells = []; spriteCache.clear(); initParticles()
+        ctx.fillStyle = '#06060c'; ctx.fillRect(0, 0, W, H)
+        wells.push(new Well(W * 0.5, H * 0.5, 100, Math.random() * 360))
+      }
+    })
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault()
+      const delta = e.deltaY > 0 ? -200 : 200
+      NUM_P = Math.max(500, Math.min(8000, NUM_P + delta))
+      while (particles.length < NUM_P) particles.push(new Particle())
+      while (particles.length > NUM_P) particles.pop()
+    }, { passive: false })
+
+    function batchDraw() {
+      for (let b = 0; b < NUM_HB; b++) hueBkts[b].length = 0
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i]
+        if (p.tCount >= 2) hueBkts[p.hueBkt].push(p)
+      }
+
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round'
+      for (let b = 0; b < NUM_HB; b++) {
+        const bkt = hueBkts[b]
+        if (bkt.length === 0) continue
+        const bHue = (b * HB_SZ + HB_SZ * 0.5) % 360
+
+        const avgSpd = bkt.length > 20
+          ? (bkt[0].speed + bkt[Math.floor(bkt.length / 2)].speed + bkt[bkt.length - 1].speed) / 3
+          : bkt.reduce((s, p) => s + p.speed, 0) / bkt.length
+        const bright = Math.min(88, 50 + avgSpd * 10)
+        const al = Math.min(0.9, 0.4 + avgSpd * 0.12)
+
+        ctx.beginPath()
+        for (let i = 0; i < bkt.length; i++) {
+          const p = bkt[i], cnt = p.tCount, mt = p.maxTrail
+          const start = (p.tHead - cnt + mt) % mt
+          ctx.moveTo(p.trailX[start], p.trailY[start])
+          for (let j = 1; j < cnt; j++) {
+            const idx = (start + j) % mt
+            ctx.lineTo(p.trailX[idx], p.trailY[idx])
+          }
+        }
+        ctx.strokeStyle = `hsla(${bHue},70%,${bright}%,${al})`
+        ctx.lineWidth = 1.5 + avgSpd * 0.3
+        ctx.stroke()
+
+        ctx.beginPath()
+        for (let i = 0; i < bkt.length; i++) {
+          const p = bkt[i]
+          const hi = (p.tHead - 1 + p.maxTrail) % p.maxTrail
+          const hx = p.trailX[hi], hy = p.trailY[hi], r = 1 + p.speed * 0.3
+          ctx.moveTo(hx + r, hy)
+          ctx.arc(hx, hy, r, 0, Math.PI * 2)
+        }
+        ctx.fillStyle = `hsla(${bHue},80%,80%,${al})`
+        ctx.fill()
+      }
+    }
+
+    return {
+      resize(nW, nH) { W = nW; H = nH; spriteCache.clear() },
+      tick() {
+        ctx.fillStyle = 'rgba(6, 6, 12, 0.06)'
+        ctx.fillRect(0, 0, W, H)
+        for (let i = 0; i < particles.length; i++) particles[i].update()
+        batchDraw()
+        for (let i = 0; i < wells.length; i++) wells[i].draw()
+      }
+    }
+  }
+})
+</script>
+</body>
+</html>

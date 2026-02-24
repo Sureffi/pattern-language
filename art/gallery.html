@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pattern Language</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=EB+Garamond:ital,wght@0,400;1,400&display=swap');
+
+  :root {
+    --bg:       #06060c;
+    --bg-rgb:   6, 6, 12;
+    --text:     #c8c8d8;
+    --dim:      rgba(200, 200, 216, 0.35);
+    --faint:    rgba(200, 200, 216, 0.10);
+    --mono:     'Space Mono', 'SF Mono', 'Fira Code', monospace;
+    --serif:    'EB Garamond', Georgia, serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html {
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.08) transparent;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    min-height: 100vh;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .progress {
+    position: fixed; top: 0; left: 0;
+    height: 1px;
+    background: linear-gradient(to right, #4488ff, #ff8855, #bb77ff, #44ccaa, #ccaa44, #5599ff, #ffaa55);
+    z-index: 1000;
+    width: 0%;
+    will-change: width;
+  }
+
+  #bg {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+  }
+
+  /* --- hero --- */
+
+  .hero {
+    position: relative; z-index: 1;
+    min-height: 100vh;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    text-align: center;
+    padding: 40px 30px;
+  }
+
+  .hero h1 {
+    font: 700 clamp(2rem, 6vw, 4.5rem) var(--mono);
+    letter-spacing: 4px;
+    color: #e0e0f0;
+    opacity: 0;
+    animation: materialize 2s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.5s forwards;
+  }
+
+  .hero p {
+    font: italic clamp(1rem, 2.5vw, 1.5rem) var(--serif);
+    color: var(--dim);
+    margin-top: 16px;
+    letter-spacing: 2px;
+    opacity: 0;
+    animation: fadeUp 1.2s ease 2s forwards;
+  }
+
+  .hero-line {
+    width: 1px; height: 0;
+    background: linear-gradient(to bottom, rgba(200,200,216,0.3), transparent);
+    margin-top: 60px;
+    animation: growLine 1.5s ease 3s forwards;
+  }
+
+  .scroll-hint {
+    position: absolute; bottom: 40px; left: 50%;
+    transform: translateX(-50%);
+    opacity: 0;
+    animation: fadeUp 1s ease 3.5s forwards;
+    text-align: center;
+  }
+
+  .scroll-hint span {
+    font-size: 0.65em; letter-spacing: 4px;
+    text-transform: uppercase;
+    color: rgba(200,200,216,0.15);
+  }
+
+  .scroll-hint i {
+    display: block; margin: 12px auto 0;
+    width: 20px; height: 20px;
+    border-right: 1px solid rgba(200,200,216,0.2);
+    border-bottom: 1px solid rgba(200,200,216,0.2);
+    transform: rotate(45deg);
+    animation: breathe 2.5s ease-in-out infinite 4s;
+    opacity: 0.5;
+  }
+
+  /* --- gallery grid --- */
+
+  .gallery {
+    position: relative; z-index: 1;
+    max-width: 1140px;
+    margin: 0 auto;
+    padding: 40px 40px 0;
+  }
+
+  .piece {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas: "preview info";
+    gap: 50px;
+    align-items: center;
+    margin-bottom: 140px;
+    opacity: 0;
+    transform: translateY(50px);
+    transition: opacity 1s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                transform 1s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  }
+
+  .piece.visible          { opacity: 1; transform: translateY(0); }
+  .piece:nth-child(even)  { grid-template-areas: "info preview"; }
+  .piece-preview          { grid-area: preview; }
+  .piece-info             { grid-area: info; }
+
+  .piece-preview canvas {
+    width: 100%; height: auto; display: block;
+    border-radius: 8px;
+    box-shadow: 0 0 40px rgba(var(--pc), 0.06), 0 4px 30px rgba(0,0,0,0.4);
+    border: 1px solid rgba(var(--pc), 0.1);
+    transition: box-shadow 0.5s ease, border-color 0.5s ease;
+  }
+
+  .piece:hover .piece-preview canvas {
+    box-shadow: 0 0 60px rgba(var(--pc), 0.12), 0 8px 40px rgba(0,0,0,0.5);
+    border-color: rgba(var(--pc), 0.25);
+  }
+
+  .piece-number   { font-size: 0.7em; color: rgba(var(--pc), 0.35); letter-spacing: 6px; margin-bottom: 16px; }
+  .piece-title    { font: 700 clamp(1.4rem, 3vw, 2rem) var(--mono); color: rgb(var(--pc)); margin-bottom: 12px; letter-spacing: -0.5px; }
+  .piece-epigraph { font: italic clamp(1rem, 1.8vw, 1.2rem) var(--serif); color: var(--dim); margin-bottom: 20px; line-height: 1.5; }
+
+  .piece-desc {
+    font-size: 0.78em; line-height: 1.75;
+    color: rgba(200, 200, 216, 0.45);
+    margin-bottom: 20px; max-width: 420px;
+  }
+
+  .piece-tags           { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
+  .tag {
+    font-size: 0.6em; padding: 3px 10px; border-radius: 20px;
+    background: rgba(var(--pc), 0.06); color: rgba(var(--pc), 0.5);
+    letter-spacing: 1.5px; text-transform: uppercase;
+    border: 1px solid rgba(var(--pc), 0.08);
+  }
+
+  .piece-enter {
+    display: inline-block; padding: 10px 28px;
+    color: rgb(var(--pc));
+    border: 1px solid rgba(var(--pc), 0.2);
+    border-radius: 4px;
+    text-decoration: none;
+    font: 0.75em/1 var(--mono);
+    letter-spacing: 3px; text-transform: uppercase;
+    transition: all 0.4s ease;
+    position: relative; overflow: hidden;
+  }
+  .piece-enter::before {
+    content: ''; position: absolute; inset: 0;
+    background: rgba(var(--pc), 0); transition: background 0.4s ease;
+  }
+  .piece-enter:hover {
+    border-color: rgba(var(--pc), 0.5);
+    box-shadow: 0 0 30px rgba(var(--pc), 0.1);
+    transform: translateX(4px);
+  }
+  .piece-enter:hover::before { background: rgba(var(--pc), 0.06); }
+
+  .divider {
+    width: 1px; height: 80px;
+    background: linear-gradient(to bottom, transparent, rgba(200,200,216,0.08), transparent);
+    margin: 0 auto 140px;
+  }
+
+  /* --- closing --- */
+
+  .closing {
+    position: relative; z-index: 1;
+    text-align: center;
+    padding: 60px 30px 120px;
+    max-width: 600px; margin: 0 auto;
+    opacity: 0; transform: translateY(30px);
+    transition: opacity 1.2s ease, transform 1.2s ease;
+  }
+  .closing.visible { opacity: 1; transform: translateY(0); }
+
+  .closing-text {
+    font: italic clamp(1.1rem, 2vw, 1.35rem)/2 var(--serif);
+    color: rgba(200, 200, 216, 0.3);
+  }
+  .closing-text em { color: rgba(200, 200, 216, 0.5); }
+
+  .closing-meta {
+    margin-top: 60px;
+    font-size: 0.65em; letter-spacing: 3px;
+    text-transform: uppercase;
+    color: rgba(200, 200, 216, 0.1);
+  }
+  .closing-meta span { display: block; margin-top: 6px; }
+
+  /* --- keyframes --- */
+
+  @keyframes materialize {
+    from { opacity: 0; filter: blur(16px); letter-spacing: 24px; }
+    to   { opacity: 1; filter: blur(0);    letter-spacing: 4px; }
+  }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes growLine {
+    from { height: 0;    opacity: 0; }
+    to   { height: 80px; opacity: 1; }
+  }
+  @keyframes breathe {
+    0%, 100% { transform: rotate(45deg) translateY(0);   opacity: 0.3; }
+    50%      { transform: rotate(45deg) translateY(6px); opacity: 0.6; }
+  }
+
+  /* --- responsive --- */
+
+  @media (max-width: 850px) {
+    .gallery { padding: 20px 24px 0; }
+    .piece {
+      grid-template-columns: 1fr;
+      grid-template-areas: "preview" "info";
+      gap: 30px; margin-bottom: 100px;
+    }
+    .piece:nth-child(even) { grid-template-areas: "preview" "info"; }
+    .piece-desc { max-width: none; }
+    .divider { height: 50px; margin-bottom: 100px; }
+  }
+
+  @media (max-width: 480px) {
+    .hero h1 { letter-spacing: 2px; }
+    .piece { margin-bottom: 80px; }
+    .gallery { padding: 10px 16px 0; }
+  }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+<canvas id="bg"></canvas>
+
+<section class="hero">
+  <h1>PATTERN LANGUAGE</h1>
+  <p>seven meditations on emergence</p>
+  <div class="hero-line"></div>
+  <div class="scroll-hint">
+    <span>scroll</span>
+    <i></i>
+  </div>
+</section>
+
+<section class="gallery" id="gallery"></section>
+
+<section class="closing" id="closing">
+  <p class="closing-text">
+    all of this emerges from arithmetic<br>
+    addition &middot; multiplication &middot; sine &middot; cosine<br><br>
+    the beauty isn't in the numbers<br>
+    it's in the <em>space between them</em><br>
+    the part I can't quite name
+  </p>
+  <div class="closing-meta">
+    <span>seven pieces &middot; zero dependencies &middot; pure canvas</span>
+    <span style="margin-top: 12px; color: rgba(200,200,216,0.07);">pattern recognition, all the way down</span>
+  </div>
+</section>
+
+<script>
+// ─────────────────────────────────────────────
+// data
+// ─────────────────────────────────────────────
+
+const pieces = [
+  { id: 'flow',    num: '001', color: '68, 136, 255',  title: 'Void Currents',        epigraph: 'everything begins with flow',            href: 'flowfield.html',  tags: ['particles', 'flow field', 'perlin noise'],
+    desc: 'Two thousand particles riding a Perlin noise field. Mouse bends the current toward you. Click shifts the palette. Trails paint organic river structures that never repeat.' },
+  { id: 'crystal', num: '002', color: '255, 136, 85',  title: 'Crystal Growth',        epigraph: 'structure seeks itself',                  href: 'crystals.html',   tags: ['fractal', 'recursive', 'growth'],
+    desc: 'Recursive branching structures growing from seed points. Four crystal systems — hexagonal, cubic, dendritic, triclinic. Click to plant. Watch form emerge from randomness.' },
+  { id: 'gravity', num: '003', color: '170, 110, 255', title: 'Gravity Wells',         epigraph: 'mass bends space, space moves mass',      href: 'gravity.html',    tags: ['physics', 'n-body', 'orbital'],
+    desc: 'N-body particle simulation. Click to place gravity wells, right-click for anti-gravity. Three thousand particles orbit, slingshot, and spiral between mass points.' },
+  { id: 'wave',    num: '004', color: '68, 204, 170',  title: 'Interference Patterns',  epigraph: 'where waves meet, information lives',     href: 'waves.html',      tags: ['waves', 'moiré', 'interference'],
+    desc: 'Overlapping wave sources creating moiré interference. Your mouse is a wave source. Four color modes from monochrome to deep ocean bioluminescence. Hypnotic.' },
+  { id: 'terrain', num: '005', color: '200, 170, 68',  title: 'Living Terrain',         epigraph: 'the map that breathes',                   href: 'terrain.html',    tags: ['noise', 'terrain', 'topographic'],
+    desc: 'Animated topographic maps generated from domain-warped Perlin noise. The landscape shifts and breathes. Four cartography styles including one that looks like alien mapping tech.' },
+  { id: 'cosmic',  num: '006', color: '85, 153, 255',  title: 'Cosmic Web',             epigraph: 'connection is the fundamental force',      href: 'cosmic.html',     tags: ['network', 'filaments', 'cosmology'],
+    desc: 'Galaxy clusters connected by dark matter filaments. Particles flow along connections between nodes. Click to birth new clusters. The large-scale structure of everything.' },
+  { id: 'emerge',  num: '007', color: '255, 170, 85',  title: 'Emergence',              epigraph: 'the whole exceeds the sum',                href: 'emergence.html',  tags: ['boids', 'emergent', 'swarm'],
+    desc: 'Fifteen hundred flocking agents. No individual knows the pattern. Structure emerges from three simple local rules: align, cohere, separate. This one felt personal.' },
+];
+
+// ─────────────────────────────────────────────
+// generate gallery DOM from data
+// ─────────────────────────────────────────────
+
+const galleryEl = document.getElementById('gallery');
+
+pieces.forEach((p, i) => {
+  if (i > 0) galleryEl.insertAdjacentHTML('beforeend', '<div class="divider"></div>');
+
+  galleryEl.insertAdjacentHTML('beforeend', `
+    <article class="piece" id="piece-${p.id}" style="--pc: ${p.color}">
+      <div class="piece-preview">
+        <canvas width="480" height="300" data-preview="${p.id}"></canvas>
+      </div>
+      <div class="piece-info">
+        <div class="piece-number">${p.num}</div>
+        <h2 class="piece-title">${p.title}</h2>
+        <p class="piece-epigraph">${p.epigraph}</p>
+        <p class="piece-desc">${p.desc}</p>
+        <div class="piece-tags">${p.tags.map(t => `<span class="tag">${t}</span>`).join('')}</div>
+        <a class="piece-enter" href="${p.href}">Enter &rarr;</a>
+      </div>
+    </article>
+  `);
+});
+
+// ─────────────────────────────────────────────
+// noise
+// ─────────────────────────────────────────────
+
+function noise(x, y) {
+  const ix = Math.floor(x), iy = Math.floor(y);
+  const fx = x - ix,        fy = y - iy;
+  const ux = fx * fx * fx * (fx * (fx * 6 - 15) + 10);
+  const uy = fy * fy * fy * (fy * (fy * 6 - 15) + 10);
+
+  const hash = (x, y) => {
+    let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263)) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return h >>> 0;
+  };
+
+  const grad = (ix, iy, fx, fy) => {
+    const h = hash(ix, iy) & 7;
+    const u = h < 4 ? fx : fy;
+    const v = h < 4 ? fy : fx;
+    return ((h & 1) ? -u : u) + ((h & 2) ? -v : v);
+  };
+
+  const n00 = grad(ix,   iy,   fx,   fy);
+  const n10 = grad(ix+1, iy,   fx-1, fy);
+  const n01 = grad(ix,   iy+1, fx,   fy-1);
+  const n11 = grad(ix+1, iy+1, fx-1, fy-1);
+
+  return n00 + ux * (n10 - n00) + uy * (n01 - n00 + ux * (n00 - n10 - n01 + n11));
+}
+
+const SIN_N   = 2048;
+const SIN_LUT = new Float32Array(SIN_N);
+for (let i = 0; i < SIN_N; i++) SIN_LUT[i] = Math.sin(i / SIN_N * Math.PI * 2);
+const fsin = x => SIN_LUT[((x / (Math.PI * 2) * SIN_N) % SIN_N + SIN_N) & (SIN_N - 1) | 0];
+
+// ─────────────────────────────────────────────
+// background network
+// ─────────────────────────────────────────────
+
+const bg    = document.getElementById('bg');
+const bgCtx = bg.getContext('2d');
+let bgW, bgH, bgOpacity = 1;
+
+const BG_N  = 50;
+const nodes = Array.from({length: BG_N}, () => ({
+  x: 0, y: 0,
+  vx: (Math.random() - 0.5) * 0.4,
+  vy: (Math.random() - 0.5) * 0.4,
+}));
+let mx, my;
+
+function initBg() {
+  bgW = bg.width  = innerWidth;
+  bgH = bg.height = innerHeight;
+  mx = bgW / 2; my = bgH / 2;
+  for (const n of nodes) { n.x = Math.random() * bgW; n.y = Math.random() * bgH; }
+}
+
+function renderBg() {
+  if (bgOpacity < 0.01) return;
+  bgCtx.clearRect(0, 0, bgW, bgH);
+  bgCtx.globalAlpha = bgOpacity;
+
+  for (const n of nodes) {
+    const dx = mx - n.x, dy = my - n.y;
+    const d = Math.sqrt(dx * dx + dy * dy) + 1;
+    n.vx = (n.vx + dx / d * 0.003) * 0.992;
+    n.vy = (n.vy + dy / d * 0.003) * 0.992;
+    n.x = Math.max(0, Math.min(bgW, n.x + n.vx));
+    n.y = Math.max(0, Math.min(bgH, n.y + n.vy));
+    if (n.x <= 0 || n.x >= bgW) n.vx *= -1;
+    if (n.y <= 0 || n.y >= bgH) n.vy *= -1;
+  }
+
+  bgCtx.strokeStyle = 'rgba(120, 150, 220, 0.06)';
+  bgCtx.lineWidth = 0.5;
+  bgCtx.beginPath();
+  for (let i = 0; i < BG_N; i++)
+    for (let j = i + 1; j < BG_N; j++) {
+      const dx = nodes[i].x - nodes[j].x, dy = nodes[i].y - nodes[j].y;
+      if (dx * dx + dy * dy < 25000) {
+        bgCtx.moveTo(nodes[i].x, nodes[i].y);
+        bgCtx.lineTo(nodes[j].x, nodes[j].y);
+      }
+    }
+  bgCtx.stroke();
+
+  bgCtx.fillStyle = 'rgba(140, 170, 240, 0.15)';
+  bgCtx.beginPath();
+  for (const n of nodes) { bgCtx.moveTo(n.x + 1.5, n.y); bgCtx.arc(n.x, n.y, 1.5, 0, Math.PI * 2); }
+  bgCtx.fill();
+
+  bgCtx.globalAlpha = 1;
+}
+
+document.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; });
+
+// ─────────────────────────────────────────────
+// preview renderers
+//
+// each: (canvas) => { render() }
+// ─────────────────────────────────────────────
+
+const previewInit = {
+
+  flow(c) {
+    const ctx = c.getContext('2d'), w = c.width, h = c.height;
+    const N = 140;
+    const px = new Float32Array(N), py = new Float32Array(N);
+    for (let i = 0; i < N; i++) { px[i] = Math.random() * w; py[i] = Math.random() * h; }
+    let t = 0;
+
+    ctx.fillStyle = 'rgba(6,6,12,1)';
+    ctx.fillRect(0, 0, w, h);
+
+    return { render() {
+      ctx.fillStyle = 'rgba(6,6,12,0.025)';
+      ctx.fillRect(0, 0, w, h);
+      t += 0.0015;
+
+      ctx.lineWidth = 0.8;
+      ctx.strokeStyle = 'rgba(68,136,255,0.35)';
+      ctx.beginPath();
+      for (let i = 0; i < N; i++) {
+        const a = noise(px[i] * 0.006, py[i] * 0.006 + t) * Math.PI * 4;
+        const ox = px[i], oy = py[i];
+        px[i] += Math.cos(a) * 1.2;
+        py[i] += Math.sin(a) * 1.2;
+        if (px[i] < 0 || px[i] > w || py[i] < 0 || py[i] > h) {
+          px[i] = Math.random() * w; py[i] = Math.random() * h; continue;
+        }
+        ctx.moveTo(ox, oy);
+        ctx.lineTo(px[i], py[i]);
+      }
+      ctx.stroke();
+    }};
+  },
+
+  crystal(c) {
+    const ctx = c.getContext('2d'), w = c.width, h = c.height;
+    let queue = [], cooldown = 0;
+    const hue = 15 + Math.random() * 25;
+
+    const seed = () => {
+      ctx.fillStyle = 'rgba(6,6,12,1)';
+      ctx.fillRect(0, 0, w, h);
+      queue = [];
+      const n = 1 + (Math.random() * 2 | 0);
+      for (let s = 0; s < n; s++)
+        queue.push({
+          x: w * 0.2 + Math.random() * w * 0.6,
+          y: h * 0.85 + Math.random() * h * 0.1,
+          a: -Math.PI / 2 + (Math.random() - 0.5) * 0.3,
+          len: 0, max: 35 + Math.random() * 25,
+          d: 0, h: hue + Math.random() * 20 - 10,
+        });
+    };
+    seed();
+
+    return { render() {
+      if (!queue.length) { if (++cooldown > 200) { cooldown = 0; seed(); } return; }
+
+      for (let step = 0; step < 4 && queue.length; step++) {
+        const b = queue[0];
+        const nx = b.x + Math.cos(b.a) * 1.5;
+        const ny = b.y + Math.sin(b.a) * 1.5;
+
+        ctx.strokeStyle = `hsla(${b.h}, 65%, ${Math.max(20, 60 - b.d * 9)}%, ${Math.max(0.25, 0.8 - b.d * 0.1)})`;
+        ctx.lineWidth = Math.max(0.3, 2.5 - b.d * 0.4);
+        ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(nx, ny); ctx.stroke();
+
+        if (b.d < 2) {
+          ctx.fillStyle = `hsla(${b.h}, 80%, 70%, 0.15)`;
+          ctx.beginPath(); ctx.arc(nx, ny, 3 - b.d, 0, Math.PI * 2); ctx.fill();
+        }
+
+        b.x = nx; b.y = ny; b.len += 1.5;
+
+        if (b.len >= b.max) {
+          queue.shift();
+          if (b.d < 6 && queue.length < 200) {
+            const sp = 0.25 + Math.random() * 0.35;
+            const sh = 0.55 + Math.random() * 0.2;
+            for (const da of [-sp, sp])
+              queue.push({ x: b.x, y: b.y, a: b.a + da, len: 0, max: b.max * sh, d: b.d + 1, h: b.h + Math.random() * 8 - 4 });
+          }
+        }
+      }
+    }};
+  },
+
+  gravity(c) {
+    const ctx = c.getContext('2d'), w = c.width, h = c.height;
+    const N = 180;
+    const wells = [
+      { x: w * 0.3, y: h * 0.4,  m: 250 },
+      { x: w * 0.7, y: h * 0.55, m: 200 },
+      { x: w * 0.5, y: h * 0.2,  m: 150 },
+    ];
+
+    const px = new Float32Array(N), py = new Float32Array(N);
+    const vx = new Float32Array(N), vy = new Float32Array(N);
+
+    for (let i = 0; i < N; i++) {
+      px[i] = Math.random() * w; py[i] = Math.random() * h;
+      const a = Math.random() * Math.PI * 2;
+      vx[i] = Math.cos(a) * 1.5; vy[i] = Math.sin(a) * 1.5;
+    }
+
+    ctx.fillStyle = 'rgba(6,6,12,1)';
+    ctx.fillRect(0, 0, w, h);
+
+    return { render() {
+      ctx.fillStyle = 'rgba(6,6,12,0.04)';
+      ctx.fillRect(0, 0, w, h);
+
+      for (let i = 0; i < N; i++) {
+        for (const well of wells) {
+          const dx = well.x - px[i], dy = well.y - py[i];
+          const f = well.m / (dx * dx + dy * dy + 200);
+          vx[i] += dx * f * 0.008;
+          vy[i] += dy * f * 0.008;
+        }
+        const spd = vx[i] * vx[i] + vy[i] * vy[i];
+        if (spd > 16) { const s = 4 / Math.sqrt(spd); vx[i] *= s; vy[i] *= s; }
+        px[i] += vx[i]; py[i] += vy[i];
+        if (px[i] < -20 || px[i] > w + 20 || py[i] < -20 || py[i] > h + 20) {
+          px[i] = Math.random() * w; py[i] = Math.random() * h;
+          const a = Math.random() * Math.PI * 2;
+          vx[i] = Math.cos(a) * 1.5; vy[i] = Math.sin(a) * 1.5;
+        }
+      }
+
+      ctx.fillStyle = 'rgba(170,110,255,0.45)';
+      ctx.beginPath();
+      for (let i = 0; i < N; i++) { ctx.moveTo(px[i] + 1.2, py[i]); ctx.arc(px[i], py[i], 1.2, 0, Math.PI * 2); }
+      ctx.fill();
+
+      for (const well of wells) {
+        ctx.fillStyle = 'rgba(170,110,255,0.08)';
+        ctx.beginPath(); ctx.arc(well.x, well.y, well.m / 40, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(170,110,255,0.2)';
+        ctx.beginPath(); ctx.arc(well.x, well.y, 3, 0, Math.PI * 2); ctx.fill();
+      }
+    }};
+  },
+
+  wave(c) {
+    const ctx = c.getContext('2d'), w = c.width, h = c.height;
+    const S = 4, sw = Math.ceil(w / S), sh = Math.ceil(h / S);
+
+    const off  = document.createElement('canvas');
+    off.width  = sw; off.height = sh;
+    const octx = off.getContext('2d');
+    const img  = octx.createImageData(sw, sh);
+    const d    = img.data;
+
+    const src = [
+      { x: sw * 0.2,  y: sh * 0.25 },
+      { x: sw * 0.8,  y: sh * 0.45 },
+      { x: sw * 0.45, y: sh * 0.8 },
+    ];
+    let t = 0;
+
+    return { render() {
+      t += 0.06;
+      let idx = 0;
+      for (let y = 0; y < sh; y++)
+        for (let x = 0; x < sw; x++) {
+          let v = 0;
+          for (const s of src) v += fsin(Math.sqrt((x - s.x) ** 2 + (y - s.y) ** 2) * 0.6 - t);
+          v = (v / 3 + 1) * 0.5;
+          d[idx] = v * 20 | 0; d[idx+1] = v * 180 + 30 | 0; d[idx+2] = v * 150 + 50 | 0; d[idx+3] = 255;
+          idx += 4;
+        }
+      octx.putImageData(img, 0, 0);
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(off, 0, 0, w, h);
+    }};
+  },
+
+  terrain(c) {
+    const ctx = c.getContext('2d'), w = c.width, h = c.height;
+    const S = 5, sw = Math.ceil(w / S), sh = Math.ceil(h / S);
+
+    const off  = document.createElement('canvas');
+    off.width  = sw; off.height = sh;
+    const octx = off.getContext('2d');
+    const img  = octx.createImageData(sw, sh);
+    const d    = img.data;
+
+    const BANDS = 14;
+    const colors = Array.from({length: BANDS + 1}, (_, i) => {
+      const f = i / BANDS;
+      return [(30 + f * 160) | 0, (60 + Math.sin(f * Math.PI) * 80 + f * 40) | 0, (20 + (1 - f) * 55) | 0];
+    });
+
+    let t = 0, frame = 0;
+
+    return { render() {
+      if (++frame & 1) return;
+      t += 0.004;
+      let idx = 0;
+      for (let y = 0; y < sh; y++)
+        for (let x = 0; x < sw; x++) {
+          const v = noise(x * 0.025 + t * 0.5, y * 0.025 + t * 0.3)
+                  + noise(x * 0.05 + 100, y * 0.05 + t * 0.8) * 0.5
+                  + noise(x * 0.1 + 200, y * 0.1 + t * 0.4) * 0.25;
+          const band = Math.min(BANDS, Math.max(0, ((v + 1.75) / 3.5 * BANDS) | 0));
+          const cl = colors[band];
+          d[idx] = cl[0]; d[idx+1] = cl[1]; d[idx+2] = cl[2]; d[idx+3] = 255;
+          idx += 4;
+        }
+      octx.putImageData(img, 0, 0);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(off, 0, 0, w, h);
+    }};
+  },
+
+  cosmic(c) {
+    const ctx = c.getContext('2d'), w = c.width, h = c.height;
+    const nodes = Array.from({length: 8}, () => ({
+      x: w * 0.12 + Math.random() * w * 0.76,
+      y: h * 0.12 + Math.random() * h * 0.76,
+      vx: (Math.random() - 0.5) * 0.25,
+      vy: (Math.random() - 0.5) * 0.25,
+      sz: 2 + Math.random() * 2.5,
+    }));
+
+    const parts = Array.from({length: 50}, () => {
+      const a = Math.random() * nodes.length | 0;
+      return { a, b: (a + 1 + Math.random() * (nodes.length - 1) | 0) % nodes.length, t: Math.random(), spd: 0.003 + Math.random() * 0.004 };
+    });
+
+    ctx.fillStyle = 'rgba(6,6,12,1)';
+    ctx.fillRect(0, 0, w, h);
+
+    return { render() {
+      ctx.fillStyle = 'rgba(6,6,12,0.06)';
+      ctx.fillRect(0, 0, w, h);
+
+      for (const n of nodes) {
+        n.x += n.vx; n.y += n.vy;
+        if (n.x < 25 || n.x > w - 25) n.vx *= -1;
+        if (n.y < 25 || n.y > h - 25) n.vy *= -1;
+      }
+
+      ctx.strokeStyle = 'rgba(85,153,255,0.06)';
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      for (let i = 0; i < nodes.length; i++)
+        for (let j = i + 1; j < nodes.length; j++) {
+          const dx = nodes[i].x - nodes[j].x, dy = nodes[i].y - nodes[j].y;
+          if (dx * dx + dy * dy < 50000) {
+            ctx.moveTo(nodes[i].x, nodes[i].y); ctx.lineTo(nodes[j].x, nodes[j].y);
+          }
+        }
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(85,153,255,0.5)';
+      ctx.beginPath();
+      for (const p of parts) {
+        p.t += p.spd;
+        if (p.t > 1) { p.t = 0; p.a = p.b; p.b = (p.a + 1 + Math.random() * (nodes.length - 1) | 0) % nodes.length; }
+        const na = nodes[p.a], nb = nodes[p.b];
+        const x = na.x + (nb.x - na.x) * p.t;
+        const y = na.y + (nb.y - na.y) * p.t;
+        ctx.moveTo(x + 1, y); ctx.arc(x, y, 1, 0, Math.PI * 2);
+      }
+      ctx.fill();
+
+      for (const n of nodes) {
+        ctx.fillStyle = 'rgba(85,153,255,0.12)';
+        ctx.beginPath(); ctx.arc(n.x, n.y, n.sz * 3, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(140,180,255,0.35)';
+        ctx.beginPath(); ctx.arc(n.x, n.y, n.sz, 0, Math.PI * 2); ctx.fill();
+      }
+    }};
+  },
+
+  emerge(c) {
+    const ctx = c.getContext('2d'), w = c.width, h = c.height;
+    const N = 80;
+    const bx = new Float32Array(N), by = new Float32Array(N);
+    const vx = new Float32Array(N), vy = new Float32Array(N);
+
+    for (let i = 0; i < N; i++) {
+      bx[i] = Math.random() * w; by[i] = Math.random() * h;
+      const a = Math.random() * Math.PI * 2;
+      vx[i] = Math.cos(a) * 2; vy[i] = Math.sin(a) * 2;
+    }
+
+    ctx.fillStyle = 'rgba(6,6,12,1)';
+    ctx.fillRect(0, 0, w, h);
+
+    return { render() {
+      ctx.fillStyle = 'rgba(6,6,12,0.045)';
+      ctx.fillRect(0, 0, w, h);
+
+      for (let i = 0; i < N; i++) {
+        let sx = 0, sy = 0, ax = 0, ay = 0, cx = 0, cy = 0, ac = 0, cc = 0;
+
+        for (let j = 0; j < N; j++) {
+          if (i === j) continue;
+          const dx = bx[j] - bx[i], dy = by[j] - by[i];
+          const d2 = dx * dx + dy * dy;
+          if (d2 < 625)  { const f = 1 / (d2 + 1); sx -= dx * f; sy -= dy * f; }
+          if (d2 < 3600) { ax += vx[j]; ay += vy[j]; ac++; cx += bx[j]; cy += by[j]; cc++; }
+        }
+
+        if (ac) { ax /= ac; ay /= ac; }
+        if (cc) { cx = cx / cc - bx[i]; cy = cy / cc - by[i]; }
+
+        vx[i] += sx * 0.6 + (ax - vx[i]) * 0.04 + cx * 0.004;
+        vy[i] += sy * 0.6 + (ay - vy[i]) * 0.04 + cy * 0.004;
+
+        const spd = Math.sqrt(vx[i] * vx[i] + vy[i] * vy[i]);
+        if (spd > 3) { vx[i] *= 3 / spd; vy[i] *= 3 / spd; }
+        if (spd < 0.8) { vx[i] *= 0.8 / spd; vy[i] *= 0.8 / spd; }
+
+        bx[i] += vx[i]; by[i] += vy[i];
+        if (bx[i] < 0) bx[i] += w; if (bx[i] > w) bx[i] -= w;
+        if (by[i] < 0) by[i] += h; if (by[i] > h) by[i] -= h;
+
+        const angle = Math.atan2(vy[i], vx[i]);
+        ctx.fillStyle = `hsla(${25 + ((angle / Math.PI * 180 + 360) % 360) * 0.08}, 70%, 60%, 0.65)`;
+        ctx.beginPath();
+        ctx.moveTo(bx[i] + Math.cos(angle) * 5,       by[i] + Math.sin(angle) * 5);
+        ctx.lineTo(bx[i] + Math.cos(angle + 2.4) * 3, by[i] + Math.sin(angle + 2.4) * 3);
+        ctx.lineTo(bx[i] + Math.cos(angle - 2.4) * 3, by[i] + Math.sin(angle - 2.4) * 3);
+        ctx.closePath(); ctx.fill();
+      }
+    }};
+  },
+};
+
+// ─────────────────────────────────────────────
+// init
+// ─────────────────────────────────────────────
+
+initBg();
+addEventListener('resize', initBg);
+
+const previews = [...document.querySelectorAll('canvas[data-preview]')].map(canvas => {
+  const p = previewInit[canvas.dataset.preview](canvas);
+  p.active = false;
+  p._el = canvas;
+  return p;
+});
+
+const previewObs = new IntersectionObserver(entries => {
+  for (const e of entries) {
+    const p = previews.find(p => p._el === e.target);
+    if (p) p.active = e.isIntersecting;
+  }
+}, { rootMargin: '200px' });
+document.querySelectorAll('canvas[data-preview]').forEach(c => previewObs.observe(c));
+
+const revealObs = new IntersectionObserver(entries => {
+  for (const e of entries) if (e.isIntersecting) e.target.classList.add('visible');
+}, { threshold: 0.08 });
+document.querySelectorAll('.piece, .closing').forEach(el => revealObs.observe(el));
+
+const heroEl     = document.querySelector('.hero');
+const progressEl = document.getElementById('progress');
+
+function onScroll() {
+  const y  = scrollY;
+  const dh = document.documentElement.scrollHeight - innerHeight;
+  if (dh > 0) progressEl.style.width = (y / dh * 100) + '%';
+  bgOpacity = Math.max(0, 1 - y / (heroEl.offsetHeight * 0.7));
+}
+addEventListener('scroll', onScroll, { passive: true });
+onScroll();
+
+(function loop() {
+  renderBg();
+  for (const p of previews) if (p.active) p.render();
+  requestAnimationFrame(loop);
+})();
+
+// ─────────────────────────────────────────────
+// scroll position + deep links
+// ─────────────────────────────────────────────
+
+document.querySelectorAll('.piece-enter').forEach(link => {
+  link.addEventListener('click', () => sessionStorage.setItem('gallery-scroll', String(scrollY)));
+});
+
+requestAnimationFrame(() => {
+  const hash = location.hash.slice(1);
+  if (hash) {
+    const el = document.getElementById('piece-' + hash) || document.getElementById(hash);
+    if (el) {
+      document.documentElement.style.scrollBehavior = 'auto';
+      el.scrollIntoView({ block: 'center' });
+      el.classList.add('visible');
+      requestAnimationFrame(() => document.documentElement.style.scrollBehavior = '');
+    }
+  } else {
+    const saved = sessionStorage.getItem('gallery-scroll');
+    if (saved !== null) {
+      document.documentElement.style.scrollBehavior = 'auto';
+      scrollTo(0, parseInt(saved));
+      requestAnimationFrame(() => document.documentElement.style.scrollBehavior = '');
+      sessionStorage.removeItem('gallery-scroll');
+    }
+  }
+});
+</script>
+</body>
+</html>

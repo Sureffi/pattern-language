@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Void Currents — Pattern Language</title>
+</head>
+<body>
+<script src="noise.js"></script>
+<script src="shell.js"></script>
+<script>
+shell({
+  num: '001',
+  title: 'Void Currents',
+  epigraph: 'everything begins with flow',
+  accent: 'rgba(68, 136, 255, 0.35)',
+  controls: 'move mouse to influence flow<br>click to shift palette',
+  next: { href: 'crystals.html', title: 'Crystal Growth' },
+
+  setup(canvas, ctx, W, H) {
+    const noise = new Noise()
+
+    const paletteDefs = [
+      ['#0a0a2e','#1a1a4e','#4a0e8f','#8b5cf6','#c084fc','#e0b0ff','#ff6ec7','#00fff5'],
+      ['#0d0000','#2d0a00','#8b2500','#ff4500','#ff6b35','#ffa07a','#ffd700','#ffffff'],
+      ['#000814','#001d3d','#003566','#005f73','#0a9396','#40e0d0','#94d2bd','#e9d8a6'],
+      ['#020024','#090979','#1a5276','#00b4d8','#48cae4','#90e0ef','#72efdd','#c7f9cc'],
+    ]
+
+    const palettes = paletteDefs.map(pal => pal.map(hex => [
+      parseInt(hex.slice(1, 3), 16),
+      parseInt(hex.slice(3, 5), 16),
+      parseInt(hex.slice(5, 7), 16)
+    ]))
+
+    let palIdx = Math.floor(Math.random() * palettes.length)
+    let pal = palettes[palIdx]
+    const PAL_LEN = 8
+
+    // particles as structure-of-arrays
+    const N = 2000
+    const px = new Float32Array(N), py = new Float32Array(N)
+    const ppx = new Float32Array(N), ppy = new Float32Array(N)
+    const spd = new Float32Array(N)
+    const life = new Uint16Array(N), maxLife = new Uint16Array(N)
+    const sz = new Float32Array(N)
+    const alpha = new Float32Array(N)
+
+    let mouseX = W / 2, mouseY = H / 2
+    const timeOffset = Math.random() * 1000
+
+    function resetP(i) {
+      px[i] = Math.random() * W; py[i] = Math.random() * H
+      ppx[i] = px[i]; ppy[i] = py[i]
+      spd[i] = 0.5 + Math.random() * 2
+      life[i] = 0
+      maxLife[i] = 100 + Math.floor(Math.random() * 300)
+      sz[i] = 0.5 + Math.random() * 1.5
+    }
+    for (let i = 0; i < N; i++) resetP(i)
+
+    canvas.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY })
+    canvas.addEventListener('click', () => {
+      palIdx = Math.floor(Math.random() * palettes.length)
+      pal = palettes[palIdx]
+      for (let i = 0; i < 200; i++) {
+        const j = Math.floor(Math.random() * N)
+        px[j] = mouseX + (Math.random() - 0.5) * 50
+        py[j] = mouseY + (Math.random() - 0.5) * 50
+        ppx[j] = px[j]; ppy[j] = py[j]
+        life[j] = 0; spd[j] = 1 + Math.random() * 3
+      }
+    })
+
+    // bucketing: 4 size x 6 color = 24 buckets
+    const SZ_B = 4, CLR_B = 6, TOT_B = SZ_B * CLR_B
+    const bktLists = new Array(TOT_B)
+    const bktCounts = new Uint16Array(TOT_B)
+    for (let b = 0; b < TOT_B; b++) bktLists[b] = new Uint16Array(N)
+
+    const bktColors = new Array(TOT_B)
+    function rebuildColors() {
+      for (let cb = 0; cb < CLR_B; cb++) {
+        const val = (cb + 0.5) / CLR_B
+        const idx = val * (PAL_LEN - 1)
+        const ci = Math.floor(idx), t = idx - ci
+        const ci2 = ci + 1 < PAL_LEN ? ci + 1 : ci
+        const c1 = pal[ci], c2 = pal[ci2]
+        const r = Math.floor(c1[0] + t * (c2[0] - c1[0]))
+        const g = Math.floor(c1[1] + t * (c2[1] - c1[1]))
+        const bv = Math.floor(c1[2] + t * (c2[2] - c1[2]))
+        for (let sb = 0; sb < SZ_B; sb++) bktColors[sb * CLR_B + cb] = [r, g, bv]
+      }
+    }
+    rebuildColors()
+
+    let lastPalIdx = palIdx
+    let frame = 0
+    ctx.lineCap = 'round'
+
+    return {
+      resize(nW, nH) { W = nW; H = nH },
+      tick() {
+        ctx.fillStyle = 'rgba(6, 6, 12, 0.02)'
+        ctx.fillRect(0, 0, W, H)
+
+        if (lastPalIdx !== palIdx) { rebuildColors(); lastPalIdx = palIdx }
+
+        const time = frame * 0.005
+        for (let b = 0; b < TOT_B; b++) bktCounts[b] = 0
+
+        for (let i = 0; i < N; i++) {
+          ppx[i] = px[i]; ppy[i] = py[i]
+
+          const n1 = noise.get(px[i] * 0.003, py[i] * 0.003 + time * 0.3)
+          const n2 = noise.get(px[i] * 0.003 + 100, py[i] * 0.003 + 100 + time * 0.2)
+
+          const dx = mouseX - px[i], dy = mouseY - py[i]
+          const dist = Math.sqrt(dx * dx + dy * dy)
+          const influence = dist < 300 ? 1 - dist / 300 : 0
+
+          const angle = n1 * 12.566370614359172 + influence * Math.atan2(dy, dx) * 0.5
+          const turb = n2 * 0.5
+          const s = spd[i]
+
+          px[i] += (Math.cos(angle) + turb * Math.cos(angle * 3)) * s
+          py[i] += (Math.sin(angle) + turb * Math.sin(angle * 2)) * s
+
+          life[i]++
+          if (px[i] < -10 || px[i] > W + 10 || py[i] < -10 || py[i] > H + 10 || life[i] > maxLife[i]) {
+            resetP(i); continue
+          }
+
+          const l = life[i], ml = maxLife[i], ratio = l / ml
+          const fi = l < 20 ? l / 20 : 1
+          const fo = ratio > 0.7 ? (1 - ratio) / 0.3 : 1
+          const a = (fi < fo ? fi : fo) * 0.6
+          if (a < 0.01) continue
+          alpha[i] = a
+
+          const cv = (noise.get(px[i] * 0.002 + timeOffset, py[i] * 0.002) + 1) * 0.5
+          const cb = cv < 1 ? Math.floor(cv * CLR_B) : CLR_B - 1
+          const sb = Math.min(SZ_B - 1, Math.floor((sz[i] - 0.5) / 0.4))
+          const bkt = sb * CLR_B + cb
+          bktLists[bkt][bktCounts[bkt]++] = i
+        }
+
+        for (let b = 0; b < TOT_B; b++) {
+          const count = bktCounts[b]
+          if (count === 0) continue
+          const sb = Math.floor(b / CLR_B)
+          const list = bktLists[b], clr = bktColors[b]
+          const lineWidth = 0.5 + sb * 0.4
+
+          let totalA = 0
+          for (let j = 0; j < count; j++) totalA += alpha[list[j]]
+          const avgA = totalA / count
+
+          ctx.strokeStyle = `rgba(${clr[0]},${clr[1]},${clr[2]},${avgA})`
+          ctx.lineWidth = lineWidth
+          ctx.beginPath()
+          for (let j = 0; j < count; j++) {
+            const i = list[j]
+            ctx.moveTo(ppx[i], ppy[i])
+            ctx.lineTo(px[i], py[i])
+          }
+          ctx.stroke()
+        }
+
+        if (frame % 3 === 0) {
+          const fx = mouseX + (Math.random() - 0.5) * 100
+          const fy = mouseY + (Math.random() - 0.5) * 100
+          ctx.beginPath()
+          ctx.arc(fx, fy, Math.random() * 2, 0, Math.PI * 2)
+          ctx.fillStyle = `rgba(255,255,255,${Math.random() * 0.3})`
+          ctx.fill()
+        }
+
+        frame++
+      }
+    }
+  }
+})
+</script>
+</body>
+</html>
