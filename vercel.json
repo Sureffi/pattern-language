@@ -1,5 +1,5 @@
 {
-  "rewrites": [
-    { "source": "/", "destination": "/art/gallery.html" }
+  "redirects": [
+    { "source": "/", "destination": "/art/gallery.html", "permanent": false }
   ]
 }
