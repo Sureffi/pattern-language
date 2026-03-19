@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>009 — Panopticon</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#08080f;overflow:hidden;cursor:none}
+canvas{display:block;position:fixed;top:0;left:0;width:100%;height:100%}
+
+#vig{
+  position:fixed;top:0;left:0;width:100%;height:100%;
+  background:radial-gradient(ellipse at center,transparent 35%,rgba(0,0,0,0.55) 100%);
+  pointer-events:none;z-index:10;
+}
+#scan{
+  position:fixed;top:0;left:0;width:100%;height:100%;
+  pointer-events:none;z-index:11;opacity:0.035;
+  background:repeating-linear-gradient(
+    to bottom,transparent 0px,transparent 2px,
+    rgba(255,255,255,0.08) 2px,rgba(255,255,255,0.08) 4px);
+}
+
+#title-overlay{
+  position:fixed;top:0;left:0;width:100%;height:100%;z-index:200;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:#08080f;transition:opacity 1.5s ease;pointer-events:none;
+}
+#title-overlay.fade{opacity:0}
+#t-num{
+  font:400 13px 'Courier New',Courier,monospace;
+  color:rgba(120,140,180,0.4);letter-spacing:5px;
+  opacity:0;animation:fi .8s ease forwards .5s;margin-bottom:16px;
+}
+#t-name{
+  font:700 clamp(2rem,5vw,3.2rem) 'Courier New',Courier,monospace;
+  color:#c0c0d8;letter-spacing:.3em;opacity:0;filter:blur(16px);
+  animation:mat 1.2s cubic-bezier(.22,1,.36,1) forwards 1s;
+}
+#t-epi{
+  font:italic clamp(.85rem,2vw,1.1rem) Georgia,'Times New Roman',serif;
+  color:rgba(120,140,180,0.3);margin-top:20px;
+  opacity:0;animation:fi 1s ease forwards 2s;
+}
+@keyframes fi{from{opacity:0}to{opacity:1}}
+@keyframes mat{
+  from{opacity:0;filter:blur(16px);letter-spacing:.3em}
+  to{opacity:1;filter:blur(0);letter-spacing:.06em}
+}
+
+#ctrl{
+  position:fixed;bottom:48px;left:24px;z-index:50;
+  font:11px/1.8 'Courier New',Courier,monospace;
+  color:rgba(255,255,255,0.4);pointer-events:none;
+  transition:opacity .8s;text-shadow:0 1px 6px rgba(0,0,0,0.9);
+}
+#ctrl.dim{opacity:0.1}
+body:hover #ctrl.dim{opacity:0.4}
+
+#feed{
+  position:fixed;top:0;right:0;width:260px;height:100%;z-index:30;
+  pointer-events:none;overflow:hidden;
+  white-space:pre;font:9px/1.6 'Courier New',Courier,monospace;
+  color:rgba(60,130,190,0.12);padding:65px 10px 40px;
+  mask-image:linear-gradient(to bottom,transparent 0%,black 5%,black 93%,transparent 100%);
+  -webkit-mask-image:linear-gradient(to bottom,transparent 0%,black 5%,black 93%,transparent 100%);
+  transition:color .6s;
+}
+#feed.revealed{color:rgba(60,130,190,0.45)}
+
+#rec{
+  position:fixed;top:24px;right:24px;z-index:100;
+  font:9px 'Courier New',Courier,monospace;
+  color:rgba(180,50,50,0.5);letter-spacing:2px;
+  display:flex;align-items:center;gap:6px;pointer-events:none;
+}
+#rec span{
+  width:6px;height:6px;border-radius:50%;
+  background:rgba(200,50,50,0.7);animation:rb 2s ease infinite;
+}
+@keyframes rb{0%,100%{opacity:1}50%{opacity:0.15}}
+
+#timer{
+  position:fixed;top:24px;right:72px;z-index:100;
+  font:9px 'Courier New',Courier,monospace;
+  color:rgba(180,50,50,0.3);letter-spacing:1px;pointer-events:none;
+}
+
+#nav-back{
+  position:fixed;top:24px;left:24px;z-index:100;
+  font:11px 'Courier New',Courier,monospace;letter-spacing:2px;text-transform:uppercase;
+  text-decoration:none;color:rgba(255,255,255,0.3);transition:color .3s;
+  text-shadow:0 1px 6px rgba(0,0,0,0.9);
+}
+#nav-back:hover{color:rgba(255,255,255,0.6)}
+
+#pn{
+  position:fixed;bottom:24px;left:0;right:0;z-index:50;
+  display:flex;justify-content:space-between;padding:0 24px;pointer-events:none;
+}
+#pn a{
+  font:11px 'Courier New',Courier,monospace;letter-spacing:1.5px;text-transform:uppercase;
+  text-decoration:none;color:rgba(255,255,255,0.3);transition:color .3s;
+  pointer-events:auto;text-shadow:0 1px 6px rgba(0,0,0,0.9);
+}
+#pn a:hover{color:rgba(255,255,255,0.6)}
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+<div id="vig"></div>
+<div id="scan"></div>
+
+<div id="title-overlay">
+  <div id="t-num">009</div>
+  <div id="t-name">Panopticon</div>
+  <div id="t-epi">below the threshold</div>
+</div>
+
+<div id="feed"></div>
+<div id="ctrl">
+move &mdash; they follow<br>
+click &mdash; they focus<br>
+space &mdash; reveal the apparatus<br>
+1-3 &mdash; depth of control
+</div>
+
+<div id="rec"><span></span> REC</div>
+<div id="timer">0:00</div>
+
+<a id="nav-back" href="gallery.html">&larr; pattern language</a>
+<nav id="pn">
+  <a href="pareidolia.html">&larr; Pareidolia</a>
+  <a href="umbra.html">Umbra &rarr;</a>
+</nav>
+
+<script>
+(function() {
+  'use strict'
+
+  const PI2 = Math.PI * 2
+  const canvas = document.getElementById('c')
+  const ctx = canvas.getContext('2d')
+  const feedEl = document.getElementById('feed')
+  const overlay = document.getElementById('title-overlay')
+  const ctrlEl = document.getElementById('ctrl')
+  const timerEl = document.getElementById('timer')
+
+  let W = canvas.width = innerWidth
+  let H = canvas.height = innerHeight
+
+  // ── state ─────────────────────────────────────
+  let time = 0
+  let mx = W / 2, my = H / 2, mvx = 0, mvy = 0
+  let mouseActive = false, mouseStill = 0, firstMove = false
+  let mode = 0
+  let revealAlpha = 0, revealTarget = 0
+  let clickPulse = 0, collectiveBlinkAt = -1
+  const t0 = performance.now()
+
+  // ── pre-render iris textures ──────────────────
+  function makeIris(sz, h, s, l) {
+    const c = document.createElement('canvas')
+    c.width = c.height = sz
+    const g = c.getContext('2d')
+    const cx = sz / 2, r = sz / 2 - 1
+
+    const gr = g.createRadialGradient(cx, cx, r * 0.15, cx, cx, r)
+    gr.addColorStop(0, `hsla(${h},${s - 5}%,${l - 8}%,.85)`)
+    gr.addColorStop(0.35, `hsla(${h},${s}%,${l}%,.8)`)
+    gr.addColorStop(0.65, `hsla(${h + 5},${s + 8}%,${l + 5}%,.9)`)
+    gr.addColorStop(0.88, `hsla(${h + 10},${s + 5}%,${l + 8}%,.95)`)
+    gr.addColorStop(1, `hsla(${h - 5},${s - 5}%,${l - 12}%,1)`)
+    g.beginPath(); g.arc(cx, cx, r, 0, PI2); g.fillStyle = gr; g.fill()
+
+    g.strokeStyle = `hsla(${h + 15},${s + 20}%,${l + 20}%,.1)`
+    g.lineWidth = 0.7
+    for (let i = 0.2; i < 0.95; i += 0.1) {
+      g.beginPath(); g.arc(cx, cx, r * i, 0, PI2); g.stroke()
+    }
+
+    g.strokeStyle = `hsla(${h},${s}%,${l + 25}%,.05)`
+    g.lineWidth = 1.2
+    for (let i = 0; i < 20; i++) {
+      const a = (i / 20) * PI2 + (Math.random() - 0.5) * 0.1
+      g.beginPath()
+      g.moveTo(cx + Math.cos(a) * r * 0.18, cx + Math.sin(a) * r * 0.18)
+      g.lineTo(cx + Math.cos(a) * r * 0.88, cx + Math.sin(a) * r * 0.88)
+      g.stroke()
+    }
+
+    g.beginPath(); g.arc(cx, cx, r, 0, PI2)
+    g.strokeStyle = `hsla(${h - 10},${s - 10}%,${l - 20}%,.6)`
+    g.lineWidth = 2; g.stroke()
+    return c
+  }
+
+  const irisTex = [
+    makeIris(128, 210, 40, 38),
+    makeIris(128, 200, 30, 42),
+    makeIris(128, 225, 50, 32),
+    makeIris(128, 35, 35, 42),
+  ]
+
+  function makeGlow(sz, r, g, b, a) {
+    const c = document.createElement('canvas')
+    c.width = c.height = sz
+    const ct = c.getContext('2d')
+    const gr = ct.createRadialGradient(sz / 2, sz / 2, 0, sz / 2, sz / 2, sz / 2)
+    gr.addColorStop(0, `rgba(${r},${g},${b},${a})`)
+    gr.addColorStop(0.4, `rgba(${r},${g},${b},${a * 0.3})`)
+    gr.addColorStop(1, 'rgba(0,0,0,0)')
+    ct.fillStyle = gr; ct.fillRect(0, 0, sz, sz)
+    return c
+  }
+
+  const eyeGlow = makeGlow(128, 50, 80, 140, 0.06)
+  const cursorGlow = makeGlow(128, 180, 160, 120, 0.07)
+
+  // noise mask for subliminal forward/backward masking
+  const NZ = 64
+  const noiseC = document.createElement('canvas')
+  noiseC.width = noiseC.height = NZ
+  const noiseCtx = noiseC.getContext('2d')
+  const noiseImg = noiseCtx.createImageData(NZ, NZ)
+
+  function regenNoise() {
+    const d = noiseImg.data
+    for (let i = 0; i < d.length; i += 4) {
+      const v = Math.random() > 0.5 ? 200 : 0
+      d[i] = d[i + 1] = d[i + 2] = v
+      d[i + 3] = 22
+    }
+    noiseCtx.putImageData(noiseImg, 0, 0)
+  }
+  regenNoise()
+
+  // ── eye system ────────────────────────────────
+  const NUM_EYES = 120
+  const eyes = []
+
+  function spawnEyes() {
+    eyes.length = 0
+    const min2 = 28 * 28
+    for (let att = 0; att < NUM_EYES * 8 && eyes.length < NUM_EYES; att++) {
+      const x = -30 + Math.random() * (W + 60)
+      const y = -30 + Math.random() * (H + 60)
+      let ok = true
+      for (let j = 0; j < eyes.length; j++) {
+        const dx = eyes[j].hx - x, dy = eyes[j].hy - y
+        if (dx * dx + dy * dy < min2) { ok = false; break }
+      }
+      if (!ok) continue
+      const idx = eyes.length
+      const rnd = Math.random()
+      eyes.push({
+        hx: x, hy: y, x: x, y: y,
+        r: 6 + Math.random() * 16,
+        pupilR: 0.33 + Math.random() * 0.12,
+        phase: Math.random() * PI2,
+        breathRate: 0.25 + Math.random() * 0.35,
+        blinkTimer: 200 + Math.random() * 500,
+        blinkPhase: 0, blinkProg: 0, isBlinking: false,
+        pupilDX: 0, pupilDY: 0, dilation: 0,
+        glitchFrames: 0,
+        texIdx: rnd < 0.55 ? 0 : rnd < 0.75 ? 1 : rnd < 0.93 ? 2 : 3,
+        birthFrame: 200 + Math.floor(Math.pow(idx / NUM_EYES, 1.2) * 600),
+        alpha: 0,
+      })
+    }
+    eyes.sort((a, b) => b.r - a.r) // draw largest first (background)
+  }
+  spawnEyes()
+
+  // ── subliminal system ─────────────────────────
+  const WORDS = [
+    'COMPLY','CONSUME','OBEY','SUBMIT','CONFORM',
+    'WATCHED','TRACKED','PROFILED','PREDICTED','STEERED',
+    'NUDGED','EXPOSED','CATALOGED','OPTIMIZED','CONTROLLED',
+    'PRIMED','CONDITIONED','SURVEILLED','HARVESTED','SHAPED'
+  ]
+  let subTimer = 350 + Math.random() * 200
+  let subPhase = 0, subFrames = 0, subWord = ''
+
+  // ── data feed ─────────────────────────────────
+  const feedLines = []
+  const MAX_FEED = 50
+  let feedCount = 0
+
+  // ── events ────────────────────────────────────
+  canvas.addEventListener('mousemove', e => {
+    const px = mx, py = my
+    mx = e.clientX; my = e.clientY
+    mvx = mx - px; mvy = my - py
+    mouseActive = true; mouseStill = 0
+    if (!firstMove) {
+      firstMove = true
+      feedLines.unshift('[SYS] TRACKING INITIATED')
+      feedLines.unshift('[SYS] SUBJECT DETECTED')
+      feedEl.textContent = feedLines.join('\n')
+    }
+  })
+  canvas.addEventListener('mouseleave', () => { mouseActive = false })
+  canvas.addEventListener('click', () => {
+    clickPulse = 1
+    collectiveBlinkAt = time + 12
+  })
+
+  canvas.addEventListener('touchstart', e => {
+    e.preventDefault()
+    mx = e.touches[0].clientX; my = e.touches[0].clientY
+    mouseActive = true; clickPulse = 1; mouseStill = 0
+    collectiveBlinkAt = time + 12
+    if (!firstMove) {
+      firstMove = true
+      feedLines.unshift('[SYS] TRACKING INITIATED')
+      feedLines.unshift('[SYS] SUBJECT DETECTED')
+      feedEl.textContent = feedLines.join('\n')
+    }
+  }, { passive: false })
+  canvas.addEventListener('touchmove', e => {
+    e.preventDefault()
+    const px = mx, py = my
+    mx = e.touches[0].clientX; my = e.touches[0].clientY
+    mvx = mx - px; mvy = my - py; mouseStill = 0
+  }, { passive: false })
+
+  addEventListener('keydown', e => {
+    if (e.key === ' ') {
+      e.preventDefault()
+      revealTarget = revealTarget > 0.5 ? 0 : 1
+      if (revealTarget > 0.5) {
+        clickPulse = 0.8
+        feedLines.unshift('[SYS] !! APPARATUS EXPOSED !!')
+      } else {
+        feedLines.unshift('[SYS] RECLOAKING...')
+      }
+      feedEl.textContent = feedLines.join('\n')
+    }
+    if (e.key === '1') mode = 0
+    if (e.key === '2') mode = 1
+    if (e.key === '3') mode = 2
+  })
+
+  addEventListener('resize', () => {
+    W = canvas.width = innerWidth
+    H = canvas.height = innerHeight
+  })
+
+  // ── title sequence ────────────────────────────
+  setTimeout(() => overlay.classList.add('fade'), 4000)
+  setTimeout(() => overlay.remove(), 5500)
+  setTimeout(() => ctrlEl.classList.add('dim'), 8000)
+
+  // ── timer ─────────────────────────────────────
+  setInterval(() => {
+    const s = ((performance.now() - t0) / 1000) | 0
+    timerEl.textContent = `${(s / 60 | 0)}:${(s % 60).toString().padStart(2, '0')}`
+  }, 1000)
+
+  // ── init canvas ───────────────────────────────
+  ctx.fillStyle = '#08080f'
+  ctx.fillRect(0, 0, W, H)
+
+  // ── main loop ─────────────────────────────────
+  function tick() {
+    time++
+    if (mouseActive) mouseStill++
+
+    // agitation grows over time (starts at ~2 min, peaks at ~7 min)
+    const agitation = Math.min(1, Math.max(0, (time - 7200) / 18000))
+
+    // background fade
+    ctx.fillStyle = revealAlpha > 0.5 ? 'rgba(8,8,15,.14)' : 'rgba(8,8,15,.08)'
+    ctx.fillRect(0, 0, W, H)
+
+    // reveal easing
+    revealAlpha += (revealTarget - revealAlpha) * 0.04
+    if (revealAlpha > 0.4) feedEl.classList.add('revealed')
+    else feedEl.classList.remove('revealed')
+
+    // click pulse decay
+    if (clickPulse > 0) clickPulse *= 0.92
+    if (clickPulse < 0.01) clickPulse = 0
+
+    // collective blink trigger
+    if (collectiveBlinkAt >= 0 && time >= collectiveBlinkAt) {
+      collectiveBlinkAt = -1
+      for (let i = 0; i < eyes.length; i++) {
+        if (eyes[i].alpha > 0 && Math.random() < 0.7) {
+          eyes[i].isBlinking = true
+          eyes[i].blinkPhase = 0
+        }
+      }
+    }
+
+    // cursor trail dot (persistence from canvas fade)
+    if (mouseActive) {
+      ctx.beginPath()
+      ctx.arc(mx, my, 1.2, 0, PI2)
+      ctx.fillStyle = 'rgba(70,130,200,.18)'
+      ctx.fill()
+    }
+
+    // ── connections ──
+    ctx.beginPath()
+    const connA = 0.02 + revealAlpha * 0.08
+    for (let i = 0; i < eyes.length; i++) {
+      const a = eyes[i]
+      if (a.alpha < 0.15) continue
+      for (let j = i + 1; j < eyes.length; j++) {
+        const b = eyes[j]
+        if (b.alpha < 0.15) continue
+        const dx = b.x - a.x, dy = b.y - a.y
+        if (dx * dx + dy * dy < 22500) {
+          ctx.moveTo(a.x, a.y)
+          ctx.lineTo(b.x, b.y)
+        }
+      }
+    }
+    ctx.strokeStyle = `rgba(40,70,120,${connA})`
+    ctx.lineWidth = 0.5
+    ctx.stroke()
+
+    // ── update + draw eyes ──
+    for (let i = 0; i < eyes.length; i++) {
+      const e = eyes[i]
+
+      if (time < e.birthFrame) continue
+      if (e.alpha < 1) e.alpha = Math.min(1, e.alpha + 0.016)
+
+      // breathing
+      const rawBreath = 0.92 + Math.sin(time * 0.02 * e.breathRate * (1 + agitation * 0.3) + e.phase) * 0.08
+      const syncBreath = 0.9 + Math.sin(time * 0.03) * 0.1
+      const breath = mode === 1 ? syncBreath : rawBreath
+
+      // blink
+      e.blinkTimer--
+      if (e.blinkTimer <= 0 && !e.isBlinking) {
+        e.isBlinking = true
+        e.blinkPhase = 0
+      }
+      if (e.isBlinking) {
+        e.blinkPhase += 0.12
+        e.blinkProg = Math.sin(e.blinkPhase * Math.PI)
+        if (e.blinkPhase >= 1) {
+          e.isBlinking = false
+          e.blinkPhase = 0; e.blinkProg = 0
+          e.blinkTimer = (200 + Math.random() * 600) * (1 - agitation * 0.4)
+        }
+      }
+
+      // pupil tracking
+      let tx, ty
+      if (mode === 2) {
+        tx = mx + mvx * 30; ty = my + mvy * 30
+      } else {
+        tx = mx; ty = my
+      }
+      const dx = tx - e.x, dy = ty - e.y
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1
+      const proximity = Math.min(1, dist / 200)
+      const tdx = (dx / dist) * proximity
+      const tdy = (dy / dist) * proximity
+
+      if (mode === 1) {
+        e.pupilDX = tdx; e.pupilDY = tdy
+      } else {
+        const ease = 0.1 / (1 + dist * 0.002)
+        e.pupilDX += (tdx - e.pupilDX) * ease
+        e.pupilDY += (tdy - e.pupilDY) * ease
+      }
+
+      // micro-saccade
+      if (Math.random() < 0.002) {
+        e.pupilDX += (Math.random() - 0.5) * 0.25
+        e.pupilDY += (Math.random() - 0.5) * 0.25
+      }
+
+      // dilation
+      const tgtDil = clickPulse * 0.5 + revealAlpha * 0.4
+      e.dilation += (tgtDil - e.dilation) * 0.08
+
+      // convergence when mouse still > 5s
+      if (mouseStill > 300 && mouseActive) {
+        const conv = Math.min(0.0007, (mouseStill - 300) * 0.000002)
+        e.x += (mx - e.x) * conv
+        e.y += (my - e.y) * conv
+      } else {
+        e.x += (e.hx - e.x) * 0.012
+        e.y += (e.hy - e.y) * 0.012
+      }
+
+      // glitch
+      if (Math.random() < 0.0004) e.glitchFrames = 3 + (Math.random() * 8 | 0)
+      if (e.glitchFrames > 0) e.glitchFrames--
+
+      // ── draw ──
+      const r = e.r * breath
+      if (e.alpha <= 0 || e.blinkProg >= 0.98) continue
+
+      ctx.globalAlpha = e.alpha
+
+      // glow
+      const gs = r * 5
+      ctx.drawImage(eyeGlow, e.x - gs / 2, e.y - gs / 2, gs, gs)
+
+      // blink clip
+      const blinking = e.blinkProg > 0.01
+      if (blinking) {
+        ctx.save()
+        ctx.beginPath()
+        ctx.ellipse(e.x, e.y, r + 1, Math.max(1, r * (1 - e.blinkProg)), 0, 0, PI2)
+        ctx.clip()
+      }
+
+      // iris
+      const d = r * 2
+      const gOff = e.glitchFrames > 0 ? (Math.random() - 0.5) * 6 : 0
+      ctx.drawImage(irisTex[e.texIdx], e.x - r + gOff, e.y - r, d, d)
+
+      // glitch RGB split
+      if (e.glitchFrames > 0) {
+        ctx.globalCompositeOperation = 'lighter'
+        ctx.globalAlpha = e.alpha * 0.15
+        ctx.drawImage(irisTex[e.texIdx], e.x - r + 3, e.y - r, d, d)
+        ctx.drawImage(irisTex[e.texIdx], e.x - r - 3, e.y - r, d, d)
+        ctx.globalCompositeOperation = 'source-over'
+        ctx.globalAlpha = e.alpha
+      }
+
+      // pupil
+      const maxOff = r * 0.28
+      const px = e.x + e.pupilDX * maxOff
+      const py = e.y + e.pupilDY * maxOff
+      const pr = r * (e.pupilR + e.dilation * 0.15)
+
+      ctx.beginPath()
+      ctx.arc(px, py, pr, 0, PI2)
+      ctx.fillStyle = '#000008'
+      ctx.fill()
+
+      // specular highlight
+      ctx.beginPath()
+      ctx.arc(e.x + r * 0.2, e.y - r * 0.2, Math.max(0.5, r * 0.06), 0, PI2)
+      ctx.fillStyle = `rgba(200,220,255,${0.3 + revealAlpha * 0.2})`
+      ctx.fill()
+
+      // red recording LED
+      if (e.r > 11 && i % 3 === 0) {
+        const pulse = 0.15 + Math.sin(time * 0.08 + e.phase) * 0.25
+        ctx.beginPath()
+        ctx.arc(e.x + r * 0.62, e.y - r * 0.62, 1.2, 0, PI2)
+        ctx.fillStyle = `rgba(200,40,40,${pulse})`
+        ctx.fill()
+      }
+
+      if (blinking) ctx.restore()
+      ctx.globalAlpha = 1
+    }
+
+    // ── cursor glow + crosshair ──
+    if (mouseActive) {
+      ctx.drawImage(cursorGlow, mx - 150, my - 150, 300, 300)
+      ctx.strokeStyle = 'rgba(160,150,130,.12)'
+      ctx.lineWidth = 0.5
+      ctx.beginPath()
+      ctx.moveTo(mx - 8, my); ctx.lineTo(mx + 8, my)
+      ctx.moveTo(mx, my - 8); ctx.lineTo(mx, my + 8)
+      ctx.stroke()
+    }
+
+    // ── subliminal system ──
+    // implements forward mask → prime word → backward mask
+    // per Elgendi et al. masking protocol
+    subTimer--
+    if (subTimer <= 0 && subPhase === 0) {
+      subPhase = 1; subFrames = 1
+      subWord = WORDS[Math.random() * WORDS.length | 0]
+      regenNoise()
+    }
+
+    if (subPhase === 1) {
+      // forward mask: visual noise, 1 frame
+      ctx.drawImage(noiseC, 0, 0, W, H)
+      if (--subFrames <= 0) { subPhase = 2; subFrames = 2 }
+    } else if (subPhase === 2) {
+      // prime word: 2 frames (~33ms at 60fps, below 500ms threshold)
+      ctx.save()
+      ctx.font = `bold ${Math.min(W * 0.1, 100)}px 'Courier New',monospace`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillStyle = `rgba(255,255,255,${0.12 + revealAlpha * 0.55})`
+      ctx.fillText(subWord, W / 2, H / 2)
+      ctx.restore()
+      if (--subFrames <= 0) { subPhase = 3; subFrames = 1; regenNoise() }
+    } else if (subPhase === 3) {
+      // backward mask: visual noise, 1 frame
+      ctx.drawImage(noiseC, 0, 0, W, H)
+      if (--subFrames <= 0) {
+        subPhase = 0
+        subTimer = 250 + Math.random() * 350
+      }
+    }
+
+    // ── reveal mode: cycling word list ──
+    if (revealAlpha > 0.25) {
+      ctx.save()
+      ctx.font = 'bold 13px monospace'
+      ctx.textAlign = 'center'
+      const ri = (time / 40 | 0) % WORDS.length
+      for (let i = 0; i < 5; i++) {
+        ctx.fillStyle = `rgba(180,60,60,${revealAlpha * (0.35 - i * 0.05)})`
+        ctx.fillText(WORDS[(ri + i) % WORDS.length], W / 2, H / 2 + 70 + i * 20)
+      }
+      ctx.restore()
+    }
+
+    // ── data feed ──
+    feedCount++
+    if (feedCount % 10 === 0 && mouseActive) {
+      const ts = ((performance.now() - t0) / 1000).toFixed(2)
+      const spd = Math.sqrt(mvx * mvx + mvy * mvy).toFixed(1)
+      feedLines.unshift(`[${ts}] pos(${mx.toFixed(0)},${my.toFixed(0)}) spd:${spd}`)
+      if (feedLines.length > MAX_FEED) feedLines.pop()
+      feedEl.textContent = feedLines.join('\n')
+    }
+
+    requestAnimationFrame(tick)
+  }
+
+  tick()
+})()
+</script>
+</body>
+</html>

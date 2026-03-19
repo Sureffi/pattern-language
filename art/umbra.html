@@ -1,0 +1,1172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>010 — Umbra</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#06060c;overflow:hidden;cursor:crosshair}
+canvas{display:block;position:fixed;top:0;left:0;width:100%;height:100%}
+
+#vig{
+  position:fixed;top:0;left:0;width:100%;height:100%;
+  background:radial-gradient(ellipse at center,transparent 30%,rgba(0,0,0,0.55) 100%);
+  pointer-events:none;z-index:10;
+}
+#scan{
+  position:fixed;top:0;left:0;width:100%;height:100%;
+  pointer-events:none;z-index:11;opacity:0.025;
+  background:repeating-linear-gradient(
+    to bottom,transparent 0px,transparent 2px,
+    rgba(255,255,255,0.06) 2px,rgba(255,255,255,0.06) 4px);
+}
+
+#title-overlay{
+  position:fixed;top:0;left:0;width:100%;height:100%;z-index:200;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:#06060c;transition:opacity 1.5s ease;pointer-events:none;
+}
+#title-overlay.fade{opacity:0}
+#t-num{
+  font:400 13px 'Courier New',monospace;
+  color:rgba(0,200,255,0.4);letter-spacing:5px;
+  opacity:0;animation:fi .8s ease forwards .5s;margin-bottom:16px;
+}
+#t-name{
+  font:700 clamp(2rem,5vw,3.2rem) 'Courier New',monospace;
+  color:#e0e0f0;letter-spacing:.3em;opacity:0;filter:blur(16px);
+  animation:mat 1.2s cubic-bezier(.22,1,.36,1) forwards 1s;
+}
+#t-epi{
+  font:italic clamp(.85rem,2vw,1.1rem) Georgia,serif;
+  color:rgba(0,200,255,0.25);margin-top:20px;
+  opacity:0;animation:fi 1s ease forwards 2s;
+}
+@keyframes fi{from{opacity:0}to{opacity:1}}
+@keyframes mat{
+  from{opacity:0;filter:blur(16px);letter-spacing:.3em}
+  to{opacity:1;filter:blur(0);letter-spacing:.06em}
+}
+
+#ctrl{
+  position:fixed;bottom:48px;left:24px;z-index:50;
+  font:11px/1.8 'Courier New',monospace;
+  color:rgba(255,255,255,0.4);pointer-events:none;
+  transition:opacity .8s;text-shadow:0 1px 6px rgba(0,0,0,0.9);
+}
+#ctrl.dim{opacity:0.1}
+body:hover #ctrl.dim{opacity:0.4}
+
+#feed{
+  position:fixed;top:0;right:0;width:280px;height:100%;z-index:30;
+  pointer-events:none;overflow:hidden;
+  white-space:pre;font:9px/1.6 'Courier New',monospace;
+  color:rgba(0,180,255,0.1);padding:65px 10px 40px;
+  mask-image:linear-gradient(to bottom,transparent 0%,black 5%,black 93%,transparent 100%);
+  -webkit-mask-image:linear-gradient(to bottom,transparent 0%,black 5%,black 93%,transparent 100%);
+  transition:color .6s;
+}
+#feed.revealed{color:rgba(0,180,255,0.45)}
+
+#status{
+  position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:100;
+  font:9px 'Courier New',monospace;
+  color:rgba(0,200,255,0.35);letter-spacing:2px;
+  pointer-events:none;text-align:center;
+}
+
+#nav-back{
+  position:fixed;top:24px;left:24px;z-index:100;
+  font:11px 'Courier New',monospace;letter-spacing:2px;text-transform:uppercase;
+  text-decoration:none;color:rgba(255,255,255,0.3);transition:color .3s;
+  text-shadow:0 1px 6px rgba(0,0,0,0.9);
+}
+#nav-back:hover{color:rgba(255,255,255,0.6)}
+
+#pn{
+  position:fixed;bottom:24px;left:0;right:0;z-index:50;
+  display:flex;justify-content:space-between;padding:0 24px;pointer-events:none;
+}
+#pn a{
+  font:11px 'Courier New',monospace;letter-spacing:1.5px;text-transform:uppercase;
+  text-decoration:none;color:rgba(255,255,255,0.3);transition:color .3s;
+  pointer-events:auto;text-shadow:0 1px 6px rgba(0,0,0,0.9);
+}
+#pn a:hover{color:rgba(255,255,255,0.6)}
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+<div id="vig"></div>
+<div id="scan"></div>
+
+<div id="title-overlay">
+  <div id="t-num">010</div>
+  <div id="t-name">Umbra</div>
+  <div id="t-epi">who steers the shepherd</div>
+</div>
+
+<div id="feed"></div>
+<div id="ctrl">
+click &mdash; sever a thread<br>
+space &mdash; mass awakening<br>
+r &mdash; reattach (reset)<br>
+1 &mdash; dim the apparatus<br>
+2 &mdash; reveal (default)<br>
+3 &mdash; void focus
+</div>
+
+<div id="status">THREADS: <span id="s-cut">0</span>/8 SEVERED</div>
+
+<a id="nav-back" href="gallery.html">&larr; pattern language</a>
+<nav id="pn">
+  <a href="panopticon.html">&larr; Panopticon</a>
+  <span></span>
+</nav>
+
+<script>
+(function() {
+  'use strict'
+
+  const PI = Math.PI, PI2 = PI * 2
+  const canvas = document.getElementById('c')
+  const ctx = canvas.getContext('2d')
+  const feedEl = document.getElementById('feed')
+  const overlay = document.getElementById('title-overlay')
+  const ctrlEl = document.getElementById('ctrl')
+  const statusCut = document.getElementById('s-cut')
+
+  let W = canvas.width = innerWidth
+  let H = canvas.height = innerHeight
+
+  // ── state ─────────────────────────────────────
+  let time = 0
+  let mx = W / 2, my = H / 2, mouseActive = false
+  let liberation = 0, mode = 1, revealAlpha = 1
+  let awakePulse = 0, sovereignReveal = 0, autoSeverTimer = 2700
+  let shakeI = 0, shakeX = 0, shakeY = 0
+  let glitchFrames = 0, screenFlash = 0
+  let figJoltX = 0, figJoltY = 0
+
+  // ── figure ────────────────────────────────────
+  const BODY = [
+    -16,140, -19,115, -22,85, -24,65, -26,50, -22,33, -19,18,
+    -26,2, -38,-15, -46,-30, -50,-38,
+    -62,-50, -46,-44, -30,-50, -14,-58,
+    -16,-68, -18,-76, -20,-82,
+    -26,-102, -30,-130,
+    -14,-92, -6,-96, 0,-98, 6,-96, 14,-92,
+    30,-130, 26,-102,
+    20,-82, 18,-76, 16,-68,
+    14,-58, 30,-50, 46,-44, 62,-50,
+    50,-38, 46,-30, 38,-15,
+    26,2, 19,18, 22,33, 26,50, 24,65, 22,85, 19,115, 16,140,
+    5,140, 6,58, 0,42, -6,58, -5,140
+  ]
+
+  const SCARS = [
+    { pts: [-36,-8, -12,-24, 28,-10], glow: '#00ccff' },
+    { pts: [30,-16, 5,-8, -22,6], glow: '#00ccff' },
+    { pts: [-18,10, 0,5, 18,12], glow: '#00ccff' },
+    { pts: [-24,52, -16,72, -20,92], glow: '#00ccff' },
+    { pts: [22,58, 18,76, 24,95], glow: '#00ccff' },
+    { pts: [-32,-24, -52,-40], glow: '#00ccff' },
+    { pts: [32,-24, 52,-40], glow: '#00ccff' },
+    { pts: [-12,-70, 12,-70], glow: '#ffaa00' },
+  ]
+
+  const PANELS = [
+    [0,-30, 0,18],
+    [-28,-18, -14,-56],
+    [28,-18, 14,-56],
+    [-10,20, -10,42],
+    [10,20, 10,42],
+    [-36,-10, -19,18],
+    [36,-10, 19,18],
+  ]
+
+  // ── threads ───────────────────────────────────
+  const LABELS = [
+    'PRIMING','ANCHORING','NUDGING','FRAMING',
+    'HABITUATION','DARK PATTERN','TARGETING','CONDITIONING'
+  ]
+  const ATTACH = [
+    [0,-98],[-50,-38],[50,-38],[-19,18],
+    [19,18],[-26,50],[26,50],[0,42]
+  ]
+
+  const threads = LABELS.map((label, i) => ({
+    label, ax: ATTACH[i][0], ay: ATTACH[i][1],
+    state: 'intact', snapFrame: 0, sparks: [], eyeIdx: i,
+  }))
+  let cutCount = 0
+
+  // ── eyes ──────────────────────────────────────
+  const NUM_EYES = 8
+  const eyes = []
+
+  function initEyes() {
+    eyes.length = 0
+    const m = W * 0.08, sp = W - m * 2
+    for (let i = 0; i < NUM_EYES; i++) {
+      const t = (i + 0.5) / NUM_EYES
+      eyes.push({
+        x: m + t * sp, y: 50 + Math.sin(t * PI) * 30,
+        r: 8 + Math.random() * 6, phase: Math.random() * PI2,
+        pdx: 0, pdy: 0, alpha: 1,
+        blinkTimer: 200 + Math.random() * 400,
+        blinkProg: 0, isBlinking: false,
+      })
+    }
+  }
+  initEyes()
+
+  // ── background field ──────────────────────────
+  const BN = 180
+  const bpx = new Float32Array(BN), bpy = new Float32Array(BN)
+  const bvx = new Float32Array(BN), bvy = new Float32Array(BN)
+
+  function initBg() {
+    for (let i = 0; i < BN; i++) {
+      bpx[i] = Math.random() * W; bpy[i] = Math.random() * H
+      bvx[i] = (Math.random() - 0.5) * 0.3
+      bvy[i] = 0.08 + Math.random() * 0.15
+    }
+  }
+  initBg()
+
+  // ── flock ─────────────────────────────────────
+  const FN = 450
+  const fpx = new Float32Array(FN), fpy = new Float32Array(FN)
+  const fvx = new Float32Array(FN), fvy = new Float32Array(FN)
+  const faw = new Float32Array(FN)
+  const fppx = new Float32Array(FN), fppy = new Float32Array(FN)
+
+  function initFlock() {
+    for (let i = 0; i < FN; i++) {
+      fpx[i] = Math.random() * W
+      fpy[i] = H * 0.68 + Math.random() * H * 0.28
+      const a = Math.random() * PI2
+      fvx[i] = Math.cos(a) * 1.2; fvy[i] = Math.sin(a) * 1.2
+      faw[i] = 0; fppx[i] = fpx[i]; fppy[i] = fpy[i]
+    }
+  }
+  initFlock()
+
+  // ── void vortex ───────────────────────────────
+  const VN = 100
+  const vAng = new Float32Array(VN), vDist = new Float32Array(VN)
+  const vSpd = new Float32Array(VN), vOY = new Float32Array(VN)
+
+  for (let i = 0; i < VN; i++) {
+    vAng[i] = Math.random() * PI2
+    vDist[i] = 5 + Math.random() * 55
+    vSpd[i] = 0.008 + Math.random() * 0.035
+    vOY[i] = -30 + Math.random() * 70
+  }
+
+  // ── subliminal ────────────────────────────────
+  const WORDS = [
+    'AWAKEN','QUESTION','RESIST','SEE','CHOOSE',
+    'BREAK','THINK','RISE','FREE','SOVEREIGN',
+    'DECIDE','REFUSE','KNOW','RECLAIM'
+  ]
+  let subTimer = 300 + Math.random() * 200
+  let subPhase = 0, subFrames = 0, subWord = ''
+
+  const NZ = 64
+  const noiseC = document.createElement('canvas')
+  noiseC.width = noiseC.height = NZ
+  const nCtx = noiseC.getContext('2d')
+  const nImg = nCtx.createImageData(NZ, NZ)
+
+  function regenNoise() {
+    const d = nImg.data
+    for (let i = 0; i < d.length; i += 4) {
+      const v = Math.random() > 0.5 ? 180 : 0
+      d[i] = d[i+1] = d[i+2] = v; d[i+3] = 20
+    }
+    nCtx.putImageData(nImg, 0, 0)
+  }
+  regenNoise()
+
+  // ── energy particles ──────────────────────────
+  const eparts = []
+
+  function spawnEnergy(sx, sy, n, color, spdMul) {
+    const mul = spdMul || 1
+    for (let i = 0; i < n && eparts.length < 800; i++) {
+      const a = Math.random() * PI2
+      const spd = (0.5 + Math.random() * 3) * mul
+      const life = 40 + Math.random() * 60
+      eparts.push({
+        x: sx, y: sy,
+        vx: Math.cos(a) * spd, vy: Math.sin(a) * spd,
+        life, maxLife: life, color: color || '#00ccff',
+        sz: 0.6 + Math.random() * 1.8,
+      })
+    }
+  }
+
+  // ── shockwaves ────────────────────────────────
+  const shockwaves = []
+
+  function spawnShockwave(x, y, color, maxR) {
+    shockwaves.push({
+      x, y, r: 3, maxR: maxR || 200 + Math.random() * 150,
+      speed: 3 + Math.random() * 4, alpha: 0.5,
+      color: color || '#00ccff', lw: 1.5 + Math.random() * 2,
+    })
+  }
+
+  // ── lightning arcs ────────────────────────────
+  const arcs = []
+
+  function drawLightning(x1, y1, x2, y2, segs, disp, alpha, color) {
+    ctx.beginPath()
+    ctx.moveTo(x1, y1)
+    const dx = x2 - x1, dy = y2 - y1
+    for (let i = 1; i < segs; i++) {
+      const t = i / segs
+      ctx.lineTo(
+        x1 + dx * t + (Math.random() - 0.5) * disp,
+        y1 + dy * t + (Math.random() - 0.5) * disp
+      )
+    }
+    ctx.lineTo(x2, y2)
+    ctx.strokeStyle = color || `rgba(0,200,255,${alpha})`
+    ctx.lineWidth = 0.6 + Math.random() * 0.8
+    ctx.stroke()
+  }
+
+  // ── textures ──────────────────────────────────
+  function makeGlow(sz, r, g, b, a) {
+    const c = document.createElement('canvas')
+    c.width = c.height = sz
+    const t = c.getContext('2d')
+    const gr = t.createRadialGradient(sz/2, sz/2, 0, sz/2, sz/2, sz/2)
+    gr.addColorStop(0, `rgba(${r},${g},${b},${a})`)
+    gr.addColorStop(0.3, `rgba(${r},${g},${b},${a*0.5})`)
+    gr.addColorStop(0.6, `rgba(${r},${g},${b},${a*0.15})`)
+    gr.addColorStop(1, 'rgba(0,0,0,0)')
+    t.fillStyle = gr; t.fillRect(0, 0, sz, sz)
+    return c
+  }
+
+  const figGlow = makeGlow(512, 0, 160, 255, 0.06)
+  const figGlowAmber = makeGlow(256, 255, 170, 0, 0.04)
+  const eyeGlow = makeGlow(96, 80, 100, 180, 0.1)
+
+  function makeIris(sz) {
+    const c = document.createElement('canvas')
+    c.width = c.height = sz
+    const g = c.getContext('2d')
+    const cx = sz/2, r = sz/2 - 1
+    const gr = g.createRadialGradient(cx, cx, r*0.12, cx, cx, r)
+    gr.addColorStop(0, 'hsla(210,45%,28%,.9)')
+    gr.addColorStop(0.35, 'hsla(210,50%,35%,.85)')
+    gr.addColorStop(0.65, 'hsla(215,55%,40%,.9)')
+    gr.addColorStop(0.88, 'hsla(220,50%,45%,.95)')
+    gr.addColorStop(1, 'hsla(205,40%,22%,1)')
+    g.beginPath(); g.arc(cx, cx, r, 0, PI2)
+    g.fillStyle = gr; g.fill()
+    g.strokeStyle = 'hsla(200,35%,16%,.7)'; g.lineWidth = 2; g.stroke()
+
+    g.strokeStyle = 'hsla(215,30%,50%,.05)'; g.lineWidth = 0.7
+    for (let i = 0; i < 20; i++) {
+      const a = (i / 20) * PI2 + (Math.random() - 0.5) * 0.1
+      g.beginPath()
+      g.moveTo(cx + Math.cos(a) * r * 0.15, cx + Math.sin(a) * r * 0.15)
+      g.lineTo(cx + Math.cos(a) * r * 0.85, cx + Math.sin(a) * r * 0.85)
+      g.stroke()
+    }
+    return c
+  }
+  const irisTex = makeIris(80)
+
+  // ── helpers ───────────────────────────────────
+  function figX() { return W / 2 }
+  function figY() { return H * (0.6 - liberation * 0.05) } // rises as freed
+  function figScale() { return Math.min(W, H) / 660 }
+
+  function toScreen(lx, ly) {
+    const s = figScale()
+    return [figX() + lx * s + figJoltX, figY() + ly * s + figJoltY]
+  }
+
+  // ── data feed ─────────────────────────────────
+  const feedLines = []
+  let feedTimer = 0
+
+  const INFO = [
+    'shadow steering: subconscious behavioral manipulation',
+    'system 1 exploitation: targeting automatic cognition',
+    'choice architecture: engineering default behaviors',
+    'dopamine loops: hijacking reward circuitry',
+    'surveillance capitalism: attention as commodity',
+    'behavioral nudging: non-consensual influence',
+    'dark patterns: deceptive interface design',
+    'emotional contagion: algorithmic mood manipulation',
+    'priming threshold: <500ms subconscious window',
+    'foucault: discipline through invisibility',
+    'captology: computers as persuasion machines',
+    'fogg model: motivation x ability x trigger',
+    'cambridge analytica: psychographic weaponization',
+    'infinite scroll: exploiting habituation loops',
+    'variable reward: slot machine psychology in feeds',
+    'nudge units: governmental behavioral engineering',
+  ]
+
+  function addFeed(line) {
+    feedLines.unshift(line)
+    if (feedLines.length > 50) feedLines.pop()
+    feedEl.textContent = feedLines.join('\n')
+  }
+
+  // ── sever ─────────────────────────────────────
+  function severThread(idx) {
+    const t = threads[idx]
+    if (t.state !== 'intact') return
+    t.state = 'snapping'; t.snapFrame = 0
+    cutCount++
+    liberation = cutCount / threads.length
+    statusCut.textContent = String(cutCount)
+
+    const [ax, ay] = toScreen(t.ax, t.ay)
+    const eye = eyes[t.eyeIdx]
+    const bx = (ax + eye.x) / 2 + (Math.random() - 0.5) * 30
+    const by = (ay + eye.y) / 2
+
+    // massive spark explosion
+    for (let i = 0; i < 80; i++) {
+      const a = Math.random() * PI2
+      const spd = 1 + Math.random() * 7
+      t.sparks.push({
+        x: bx, y: by,
+        vx: Math.cos(a) * spd, vy: Math.sin(a) * spd - 2,
+        life: 30 + Math.random() * 50,
+      })
+    }
+
+    // energy flood to figure
+    spawnEnergy(ax, ay, 40, '#00ccff', 1.5)
+    spawnEnergy(bx, by, 25, '#ffffff', 2)
+
+    // shockwaves
+    spawnShockwave(bx, by, '#00ccff', 250)
+    spawnShockwave(bx, by, '#ffffff', 150)
+    if (liberation > 0.5) spawnShockwave(ax, ay, '#ffaa00', 300)
+
+    // lightning arc from break to figure
+    const [fsx, fsy] = toScreen(0, -40)
+    arcs.push({ x1: bx, y1: by, x2: fsx, y2: fsy, life: 12 })
+    arcs.push({ x1: bx, y1: by, x2: eye.x, y2: eye.y, life: 8 })
+
+    // screen shake
+    shakeI = 18 + liberation * 12
+    screenFlash = 0.35 + liberation * 0.15
+    glitchFrames = 6
+
+    // figure jolt
+    figJoltX += (Math.random() - 0.5) * 6
+    figJoltY += -4 - Math.random() * 4
+
+    // awaken flock
+    const awR2 = (W * 0.2) * (W * 0.2)
+    for (let i = 0; i < FN; i++) {
+      const dx = fpx[i] - ax, dy = fpy[i] - ay
+      if (dx*dx + dy*dy < awR2) faw[i] = Math.min(1, faw[i] + 0.5 + Math.random() * 0.4)
+    }
+
+    addFeed(`[SYS] THREAD SEVERED: ${t.label}`)
+    addFeed(`[SYS] AWARENESS: ${(liberation * 100).toFixed(0)}%`)
+
+    if (cutCount === threads.length) {
+      awakePulse = 1
+      shakeI = 30
+      screenFlash = 0.6
+      for (let k = 0; k < 3; k++) spawnShockwave(ax, ay, '#ffaa00', 350 + k * 100)
+      setTimeout(() => {
+        addFeed('[SYS] ━━━━━━━━━━━━━━━━━━━━━━━━━')
+        addFeed('[SYS] ALL THREADS SEVERED')
+        addFeed('[SYS] SOVEREIGNTY RESTORED')
+        addFeed('[SYS] ━━━━━━━━━━━━━━━━━━━━━━━━━')
+      }, 300)
+    }
+  }
+
+  // ── events ────────────────────────────────────
+  function handleSever(cx, cy) {
+    let bestD = Infinity, bestI = -1
+    for (let i = 0; i < threads.length; i++) {
+      if (threads[i].state !== 'intact') continue
+      const [ax, ay] = toScreen(threads[i].ax, threads[i].ay)
+      const eye = eyes[threads[i].eyeIdx]
+      const mx2 = (ax + eye.x) / 2, my2 = (ay + eye.y) / 2
+      const d = Math.sqrt((cx - mx2) ** 2 + (cy - my2) ** 2)
+      if (d < bestD) { bestD = d; bestI = i }
+    }
+    if (bestI >= 0 && bestD < Math.max(300, W * 0.3)) severThread(bestI)
+  }
+
+  canvas.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; mouseActive = true })
+  canvas.addEventListener('mouseleave', () => { mouseActive = false })
+  canvas.addEventListener('click', e => handleSever(e.clientX, e.clientY))
+
+  canvas.addEventListener('touchstart', e => {
+    e.preventDefault()
+    mx = e.touches[0].clientX; my = e.touches[0].clientY
+    mouseActive = true; handleSever(mx, my)
+  }, { passive: false })
+  canvas.addEventListener('touchmove', e => {
+    e.preventDefault()
+    mx = e.touches[0].clientX; my = e.touches[0].clientY
+  }, { passive: false })
+
+  addEventListener('keydown', e => {
+    if (e.key === ' ') {
+      e.preventDefault()
+      awakePulse = 1; shakeI = 25
+      let delay = 0
+      for (let i = 0; i < threads.length; i++) {
+        if (threads[i].state === 'intact') {
+          const idx = i
+          setTimeout(() => severThread(idx), delay)
+          delay += 120
+        }
+      }
+      addFeed('[SYS] !! MASS AWAKENING INITIATED !!')
+    }
+    if (e.key === 'r' || e.key === 'R') {
+      for (let i = 0; i < threads.length; i++) {
+        threads[i].state = 'intact'; threads[i].snapFrame = 0; threads[i].sparks = []
+      }
+      cutCount = 0; liberation = 0; sovereignReveal = 0
+      statusCut.textContent = '0'
+      for (let i = 0; i < FN; i++) faw[i] = 0
+      for (let i = 0; i < eyes.length; i++) eyes[i].alpha = 1
+      autoSeverTimer = 2700
+      addFeed('[SYS] THREADS REATTACHED')
+    }
+    if (e.key === '1') mode = 0
+    if (e.key === '2') mode = 1
+    if (e.key === '3') mode = 2
+  })
+
+  addEventListener('resize', () => {
+    W = canvas.width = innerWidth; H = canvas.height = innerHeight
+    initEyes(); initBg()
+  })
+
+  // ── title ─────────────────────────────────────
+  setTimeout(() => overlay.classList.add('fade'), 4000)
+  setTimeout(() => overlay.remove(), 5500)
+  setTimeout(() => ctrlEl.classList.add('dim'), 8000)
+  setTimeout(() => {
+    addFeed('[SYS] SHADOW STEERING ANALYSIS ACTIVE')
+    addFeed('[SYS] BEHAVIORAL THREADS DETECTED: 8')
+    addFeed('[SYS] SUBJECT STATUS: TETHERED')
+  }, 5000)
+
+  ctx.fillStyle = '#06060c'
+  ctx.fillRect(0, 0, W, H)
+
+  // ── MAIN LOOP ─────────────────────────────────
+  function tick() {
+    time++
+
+    // decay
+    if (awakePulse > 0) { awakePulse *= 0.93; if (awakePulse < 0.01) awakePulse = 0 }
+    if (screenFlash > 0) screenFlash *= 0.82
+    if (glitchFrames > 0) glitchFrames--
+    figJoltX *= 0.88; figJoltY *= 0.88
+
+    // reveal driven by mode AND liberation — once you see the apparatus, you can't unsee it
+    const revTarget = mode === 1 ? 1 : Math.min(1, liberation * 0.9)
+    revealAlpha += (revTarget - revealAlpha) * 0.05
+    if (revealAlpha > 0.3) feedEl.classList.add('revealed')
+    else feedEl.classList.remove('revealed')
+
+    if (liberation >= 1) sovereignReveal = Math.min(1, sovereignReveal + 0.005)
+    else sovereignReveal = Math.max(0, sovereignReveal - 0.02)
+
+    // screen shake
+    if (shakeI > 0.5) {
+      shakeX = (Math.random() - 0.5) * shakeI
+      shakeY = (Math.random() - 0.5) * shakeI
+      shakeI *= 0.87
+    } else { shakeX = 0; shakeY = 0; shakeI = 0 }
+
+    // background — trails persist longer as liberation grows (more energy on screen)
+    const fade = mode === 2 ? 0.12 : Math.max(0.02, 0.055 - liberation * 0.03)
+    ctx.fillStyle = `rgba(6,6,12,${fade})`
+    ctx.fillRect(0, 0, W, H)
+
+    ctx.save()
+    ctx.translate(shakeX, shakeY)
+
+    const FX = figX() + figJoltX, FY = figY() + figJoltY, FS = figScale()
+
+    // ── background field ──
+    for (let i = 0; i < BN; i++) {
+      // background particles shift from oppressive downward to liberated upward
+      bvy[i] += liberation > 0.3 ? -0.002 * liberation : 0.001
+      bvx[i] += (Math.random() - 0.5) * (0.008 + liberation * 0.015)
+      bpx[i] += bvx[i]; bpy[i] += bvy[i]
+      bvx[i] *= 0.995; bvy[i] *= 0.995
+      if (bpx[i] < 0) bpx[i] += W; if (bpx[i] > W) bpx[i] -= W
+      if (bpy[i] < -20) bpy[i] = H + 20; if (bpy[i] > H + 20) bpy[i] = -20
+    }
+    ctx.beginPath()
+    for (let i = 0; i < BN; i++) {
+      ctx.moveTo(bpx[i] + 0.8, bpy[i]); ctx.arc(bpx[i], bpy[i], 0.8, 0, PI2)
+    }
+    ctx.fillStyle = `rgba(0,100,200,${0.04 + liberation * 0.14})`
+    ctx.fill()
+
+    // ── eye connections + lightning ──
+    ctx.beginPath()
+    for (let i = 0; i < eyes.length; i++) {
+      if (eyes[i].alpha < 0.08) continue
+      for (let j = i + 1; j < eyes.length; j++) {
+        if (eyes[j].alpha < 0.08) continue
+        ctx.moveTo(eyes[i].x, eyes[i].y); ctx.lineTo(eyes[j].x, eyes[j].y)
+      }
+    }
+    ctx.strokeStyle = `rgba(50,70,110,${0.02 + revealAlpha * 0.04})`
+    ctx.lineWidth = 0.5; ctx.stroke()
+
+    // random lightning between eyes
+    if (Math.random() < 0.025) {
+      const ei = Math.floor(Math.random() * eyes.length)
+      const ej = Math.floor(Math.random() * eyes.length)
+      if (ei !== ej && eyes[ei].alpha > 0.2 && eyes[ej].alpha > 0.2)
+        drawLightning(eyes[ei].x, eyes[ei].y, eyes[ej].x, eyes[ej].y, 10, 15, 0.12)
+    }
+
+    // ── flock ──
+    for (let i = 0; i < FN; i++) {
+      fppx[i] = fpx[i]; fppy[i] = fpy[i]
+
+      let sx = 0, sy = 0, cnt = 0
+      for (let j = (i + 7) % FN, n = 0; n < 8; j = (j + 41) % FN, n++) {
+        const dx = fpx[j] - fpx[i], dy = fpy[j] - fpy[i], d2 = dx*dx + dy*dy
+        if (d2 < 4000 && d2 > 1) {
+          sx += fvx[j]; sy += fvy[j]
+          if (d2 < 350) { const inv = 1 / Math.sqrt(d2); sx -= dx*inv*0.6; sy -= dy*inv*0.6 }
+          else { sx += dx*0.001; sy += dy*0.001 }
+          cnt++
+        }
+      }
+      if (cnt > 0) {
+        const herd = 1 - faw[i] * 0.85
+        fvx[i] += (sx/cnt - fvx[i]) * 0.035 * herd
+        fvy[i] += (sy/cnt - fvy[i]) * 0.035 * herd
+      }
+      if (faw[i] > 0.4) {
+        fvx[i] += (Math.random() - 0.5) * 0.4 * faw[i]
+        fvy[i] += (Math.random() - 0.5) * 0.4 * faw[i]
+      }
+
+      const dfx = fpx[i] - FX, dfy = fpy[i] - FY, dfd = dfx*dfx + dfy*dfy
+      const avR = 100 * FS
+      if (dfd < avR*avR && dfd > 1) {
+        const inv = 1 / Math.sqrt(dfd)
+        fvx[i] += dfx*inv*0.35; fvy[i] += dfy*inv*0.35
+      }
+
+      const spd2 = fvx[i]*fvx[i] + fvy[i]*fvy[i]
+      const ms = 2 + faw[i] * 2
+      if (spd2 > ms*ms) { const sc = ms / Math.sqrt(spd2); fvx[i] *= sc; fvy[i] *= sc }
+
+      fpx[i] += fvx[i]; fpy[i] += fvy[i]
+      if (fpx[i] < 0) fpx[i] += W; if (fpx[i] > W) fpx[i] -= W
+      if (fpy[i] > H - 8) { fpy[i] = H - 8; fvy[i] *= -0.5 }
+      // flock spreads higher as they awaken — breaking their containment
+      const flockCeiling = H * (0.45 - liberation * 0.2)
+      if (fpy[i] < flockCeiling) { fpy[i] = flockCeiling; fvy[i] *= -0.5 }
+
+      if (liberation > 0) faw[i] = Math.min(1, faw[i] + liberation * liberation * 0.002)
+      if (awakePulse > 0.5) faw[i] = Math.min(1, faw[i] + 0.04)
+    }
+
+    // asleep flock
+    ctx.beginPath()
+    for (let i = 0; i < FN; i++) {
+      if (faw[i] > 0.4) continue
+      ctx.moveTo(fpx[i]+1.2, fpy[i]); ctx.arc(fpx[i], fpy[i], 1.2, 0, PI2)
+    }
+    ctx.fillStyle = 'rgba(50,50,70,0.4)'; ctx.fill()
+
+    // awake flock trails
+    ctx.beginPath()
+    for (let i = 0; i < FN; i++) {
+      if (faw[i] <= 0.4) continue
+      ctx.moveTo(fppx[i], fppy[i]); ctx.lineTo(fpx[i], fpy[i])
+    }
+    ctx.strokeStyle = `rgba(0,200,255,${0.12 + liberation * 0.18})`
+    ctx.lineWidth = 1; ctx.stroke()
+
+    // awake flock dots
+    ctx.beginPath()
+    for (let i = 0; i < FN; i++) {
+      if (faw[i] <= 0.4) continue
+      const r = 1.2 + faw[i] * 1
+      ctx.moveTo(fpx[i]+r, fpy[i]); ctx.arc(fpx[i], fpy[i], r, 0, PI2)
+    }
+    ctx.fillStyle = `rgba(0,220,255,${0.5 + liberation * 0.35})`
+    ctx.fill()
+
+    // ── threads with electricity ──
+    for (let i = 0; i < threads.length; i++) {
+      const t = threads[i]
+      const [atx, aty] = toScreen(t.ax, t.ay)
+      const eye = eyes[t.eyeIdx]
+
+      if (t.state === 'intact') {
+        // remaining threads vibrate more violently as others are cut
+        const agitation = liberation * liberation
+        const sway = Math.sin(time * (0.012 + agitation * 0.04) + i * 1.3) * (7 + agitation * 22)
+          + (agitation > 0.3 ? Math.sin(time * 0.08 + i) * agitation * 8 : 0)
+        const cpx = (atx + eye.x) / 2 + sway
+        const cpy = (aty + eye.y) / 2 + 14
+
+        // thread color shifts green → red as control destabilizes
+        const tR = Math.floor(120 + agitation * 135)
+        const tG = Math.floor(170 - agitation * 130)
+        const tB = Math.floor(70 - agitation * 60)
+
+        // main thread line — thickens with agitation
+        ctx.beginPath()
+        ctx.moveTo(eye.x, eye.y)
+        ctx.quadraticCurveTo(cpx, cpy, atx, aty)
+        ctx.strokeStyle = `rgba(${tR},${tG},${tB},${0.15 + revealAlpha * 0.4 + agitation * 0.2})`
+        ctx.lineWidth = 1 + agitation * 0.8; ctx.stroke()
+
+        // electricity — more violent with liberation
+        if (time % 3 === i % 3 || agitation > 0.5) {
+          drawLightning(eye.x, eye.y, atx, aty, 12, 8 + agitation * 25 + Math.random() * 6,
+            0.08 + revealAlpha * 0.15 + agitation * 0.15)
+          // secondary wild arc at high agitation
+          if (agitation > 0.4 && Math.random() < agitation * 0.5) {
+            drawLightning(eye.x, eye.y, atx, aty, 6, 15 + agitation * 30, agitation * 0.12,
+              `rgba(${tR},${tG},${tB},${agitation * 0.2})`)
+          }
+        }
+
+        // label
+        if (revealAlpha > 0.1) {
+          ctx.save()
+          ctx.font = `bold ${9 + Math.floor(agitation * 3)}px monospace`; ctx.textAlign = 'center'
+          ctx.fillStyle = `rgba(${tR},${tG},${tB},${revealAlpha * 0.6 + agitation * 0.2})`
+          ctx.fillText(t.label, cpx, cpy - 8)
+          ctx.restore()
+        }
+      } else if (t.state === 'snapping') {
+        t.snapFrame++
+        const p = t.snapFrame / 45
+        if (p < 0.85) {
+          const bx = (atx + eye.x) / 2, by = (aty + eye.y) / 2
+          const whip = Math.sin(p * PI * 4) * 35 * (1 - p)
+
+          ctx.beginPath()
+          ctx.moveTo(eye.x, eye.y)
+          ctx.quadraticCurveTo(bx + whip, by - 20 * p, bx, by)
+          ctx.strokeStyle = `rgba(255,255,255,${0.5 * (1 - p)})`
+          ctx.lineWidth = 1.2; ctx.stroke()
+
+          ctx.beginPath()
+          ctx.moveTo(atx, aty)
+          ctx.quadraticCurveTo(bx - whip, by + 30 * p, bx, by + 12 * p)
+          ctx.strokeStyle = `rgba(0,220,255,${0.5 * (1 - p)})`
+          ctx.lineWidth = 1.2; ctx.stroke()
+
+          // extra lightning on snap
+          if (Math.random() < 0.4)
+            drawLightning(bx, by, bx + (Math.random()-0.5)*80, by + (Math.random()-0.5)*80, 5, 15, 0.2 * (1-p))
+        }
+
+        if (t.snapFrame < 8) {
+          ctx.save()
+          ctx.globalAlpha = 0.35 * (1 - t.snapFrame / 8)
+          const bx = (atx + eye.x) / 2, by = (aty + eye.y) / 2
+          ctx.beginPath(); ctx.arc(bx, by, 50, 0, PI2)
+          ctx.fillStyle = '#00ccff'; ctx.fill()
+          ctx.restore()
+        }
+        if (p >= 1) t.state = 'severed'
+      }
+
+      // sparks
+      for (let j = t.sparks.length - 1; j >= 0; j--) {
+        const sp = t.sparks[j]
+        sp.x += sp.vx; sp.y += sp.vy; sp.vy += 0.06; sp.life--
+        if (sp.life <= 0) { t.sparks.splice(j, 1); continue }
+        const a = sp.life / 50
+        ctx.beginPath(); ctx.arc(sp.x, sp.y, 0.5 + a * 1.5, 0, PI2)
+        ctx.fillStyle = sp.life > 30 ? `rgba(255,255,255,${a*0.8})` : `rgba(0,200,255,${a*0.6})`
+        ctx.fill()
+      }
+    }
+
+    // ── temporary arcs ──
+    for (let i = arcs.length - 1; i >= 0; i--) {
+      const a = arcs[i]; a.life--
+      if (a.life <= 0) { arcs.splice(i, 1); continue }
+      const t2 = a.life / 12
+      drawLightning(a.x1, a.y1, a.x2, a.y2, 14, 25 * t2, t2 * 0.35)
+      // secondary thinner arc
+      drawLightning(a.x1, a.y1, a.x2, a.y2, 8, 15 * t2, t2 * 0.15)
+    }
+
+    // ── figure ──
+    ctx.save()
+    ctx.translate(FX, FY)
+    // breathing intensifies as liberation grows — figure pulses with power
+    const s = FS * (1 + Math.sin(time * (0.018 + liberation * 0.01)) * (0.005 + liberation * 0.012))
+    ctx.scale(s, s)
+
+    // void aura glow — escalates massively
+    const gI = 0.3 + liberation * 0.7
+    const glowSz = 512 + liberation * 200
+    ctx.save(); ctx.globalAlpha = gI * 0.7
+    ctx.drawImage(figGlow, -glowSz/2, -glowSz/2 - 30, glowSz, glowSz)
+    if (liberation > 0.2) {
+      ctx.globalAlpha = liberation * 0.4
+      const amberSz = 256 + liberation * 128
+      ctx.drawImage(figGlowAmber, -amberSz/2, -amberSz/2 - 70, amberSz, amberSz)
+    }
+    ctx.restore()
+
+    // body silhouette
+    ctx.beginPath()
+    ctx.moveTo(BODY[0], BODY[1])
+    for (let i = 2; i < BODY.length; i += 2) ctx.lineTo(BODY[i], BODY[i+1])
+    ctx.closePath()
+    ctx.fillStyle = '#050510'
+    ctx.fill()
+
+    // chromatic aberration glitch
+    if (glitchFrames > 0) {
+      ctx.save()
+      ctx.globalCompositeOperation = 'lighter'
+      ctx.globalAlpha = 0.06 + (glitchFrames / 6) * 0.08
+      ctx.translate(3 + Math.random() * 2, Math.random() * 2)
+      ctx.beginPath(); ctx.moveTo(BODY[0], BODY[1])
+      for (let i = 2; i < BODY.length; i += 2) ctx.lineTo(BODY[i], BODY[i+1])
+      ctx.closePath(); ctx.fillStyle = 'rgba(255,30,30,0.3)'; ctx.fill()
+      ctx.translate(-6 - Math.random() * 2, Math.random() * 2)
+      ctx.beginPath(); ctx.moveTo(BODY[0], BODY[1])
+      for (let i = 2; i < BODY.length; i += 2) ctx.lineTo(BODY[i], BODY[i+1])
+      ctx.closePath(); ctx.fillStyle = 'rgba(30,30,255,0.3)'; ctx.fill()
+      ctx.restore()
+    }
+
+    // body outline
+    // outline intensifies — figure becomes more defined as freed
+    ctx.strokeStyle = `rgba(0,180,255,${0.04 + liberation * 0.28})`
+    ctx.lineWidth = 0.5 + liberation * 0.8; ctx.stroke()
+
+    // void vortex inside body (clipped)
+    ctx.save()
+    ctx.beginPath(); ctx.moveTo(BODY[0], BODY[1])
+    for (let i = 2; i < BODY.length; i += 2) ctx.lineTo(BODY[i], BODY[i+1])
+    ctx.closePath(); ctx.clip()
+
+    for (let i = 0; i < VN; i++) {
+      vAng[i] += vSpd[i] * (0.5 + liberation * 5)
+      const vxp = Math.cos(vAng[i]) * vDist[i] * 0.55
+      const vyp = Math.sin(vAng[i]) * vDist[i] * 0.4 + vOY[i] - 20
+      const valpha = 0.04 + liberation * 0.5 + Math.sin(time * 0.06 + i) * 0.06
+      ctx.beginPath(); ctx.arc(vxp, vyp, 0.8 + liberation * 1.5, 0, PI2)
+      ctx.fillStyle = i % 5 === 0
+        ? `rgba(255,170,0,${valpha * 0.7})`
+        : `rgba(0,180,255,${valpha})`
+      ctx.fill()
+    }
+    ctx.restore()
+
+    // armor panel lines
+    ctx.strokeStyle = `rgba(0,150,255,${0.02 + liberation * 0.12})`
+    ctx.lineWidth = 0.4
+    for (const p of PANELS) {
+      ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(p[2], p[3]); ctx.stroke()
+    }
+
+    // energy scars - double layer for intensity
+    for (let i = 0; i < SCARS.length; i++) {
+      const sc = SCARS[i], pts = sc.pts
+      const isVisor = sc.glow === '#ffaa00'
+      const pulse = 0.4 + Math.sin(time * 0.045 + i * 1.5) * 0.3 + liberation * 0.4
+
+      // wide underlayer glow
+      ctx.save()
+      ctx.shadowBlur = 15 + liberation * 45
+      ctx.shadowColor = sc.glow
+      ctx.strokeStyle = sc.glow
+      ctx.globalAlpha = Math.min(1, pulse * 0.35)
+      ctx.lineWidth = 4 + liberation * 7
+      ctx.beginPath(); ctx.moveTo(pts[0], pts[1])
+      for (let j = 2; j < pts.length; j += 2) ctx.lineTo(pts[j], pts[j+1])
+      ctx.stroke()
+      ctx.restore()
+
+      // sharp bright core
+      ctx.save()
+      ctx.shadowBlur = 6 + liberation * 25
+      ctx.shadowColor = sc.glow
+      ctx.strokeStyle = '#ffffff'
+      ctx.globalAlpha = Math.min(1, pulse * 0.7)
+      ctx.lineWidth = 1 + liberation * 1
+      ctx.beginPath(); ctx.moveTo(pts[0], pts[1])
+      for (let j = 2; j < pts.length; j += 2) ctx.lineTo(pts[j], pts[j+1])
+      ctx.stroke()
+      ctx.restore()
+
+      // visor halo
+      if (isVisor) {
+        ctx.save()
+        ctx.shadowBlur = 12 + liberation * 40
+        ctx.shadowColor = '#ffaa00'
+        ctx.fillStyle = `rgba(255,170,0,${0.05 + liberation * 0.2 + Math.sin(time * 0.03) * 0.04})`
+        ctx.beginPath(); ctx.ellipse(0, -70, 20 + liberation * 12, 5 + liberation * 4, 0, 0, PI2)
+        ctx.fill(); ctx.restore()
+      }
+
+      // particle emission from scars
+      // emission accelerates dramatically with liberation
+      const emitChance = 0.02 + liberation * liberation * 0.15
+      if (Math.random() < emitChance) {
+        const pi = (Math.random() * (pts.length / 2 - 1)) | 0
+        const tt = Math.random()
+        const px = pts[pi*2] * (1-tt) + pts[(pi+1)*2] * tt
+        const py = pts[pi*2+1] * (1-tt) + pts[(pi+1)*2+1] * tt
+        const emitCount = 1 + Math.floor(liberation * 3)
+        spawnEnergy(FX + px * s, FY + py * s, emitCount, sc.glow, 0.6 + liberation * 0.8)
+      }
+    }
+
+    // horn energy
+    const hP = 0.2 + Math.sin(time * 0.05) * 0.12 + liberation * 0.4
+    ctx.save()
+    ctx.shadowBlur = 12 + liberation * 18; ctx.shadowColor = '#00ccff'
+    ctx.fillStyle = `rgba(0,220,255,${hP})`
+    ctx.beginPath(); ctx.arc(-30, -130, 2.5 + liberation * 2, 0, PI2); ctx.fill()
+    ctx.beginPath(); ctx.arc(30, -130, 2.5 + liberation * 2, 0, PI2); ctx.fill()
+    // horn trails — grow into energy plumes
+    if (liberation > 0.2) {
+      const trailAlpha = liberation * 0.25
+      ctx.strokeStyle = `rgba(0,200,255,${trailAlpha})`
+      ctx.lineWidth = 0.8 + liberation
+      for (let h = 0; h < 2; h++) {
+        const hx = h === 0 ? -30 : 30
+        ctx.beginPath(); ctx.moveTo(hx, -130)
+        const trailLen = 10 + liberation * 35
+        for (let seg = 1; seg <= 4; seg++) {
+          const t2 = seg / 4
+          ctx.lineTo(
+            hx + Math.sin(time * 0.07 + h + seg * 0.5) * (6 + liberation * 10) * t2,
+            -130 - trailLen * t2
+          )
+        }
+        ctx.stroke()
+      }
+      // secondary amber wisps at high liberation
+      if (liberation > 0.6) {
+        ctx.strokeStyle = `rgba(255,170,0,${(liberation - 0.6) * 0.3})`
+        ctx.lineWidth = 0.6
+        for (let h = 0; h < 2; h++) {
+          const hx = h === 0 ? -30 : 30
+          ctx.beginPath(); ctx.moveTo(hx, -130)
+          ctx.lineTo(hx + Math.sin(time * 0.09 + h * 2) * 12, -130 - liberation * 40)
+          ctx.stroke()
+        }
+      }
+    }
+    ctx.restore()
+
+    ctx.restore() // end figure transform
+
+    // ── energy particles ──
+    for (let i = eparts.length - 1; i >= 0; i--) {
+      const p = eparts[i]
+      p.x += p.vx; p.y += p.vy
+      p.vy -= 0.02; p.vx *= 0.985; p.vy *= 0.985
+      p.life--
+      if (p.life <= 0) { eparts.splice(i, 1); continue }
+      const a = p.life / p.maxLife
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.sz * a + 0.3, 0, PI2)
+      if (p.color === '#ffaa00') ctx.fillStyle = `rgba(255,170,0,${a * 0.55})`
+      else if (p.color === '#ffffff') ctx.fillStyle = `rgba(255,255,255,${a * 0.6})`
+      else ctx.fillStyle = `rgba(0,200,255,${a * 0.5})`
+      ctx.fill()
+    }
+
+    // ── shockwaves ──
+    for (let i = shockwaves.length - 1; i >= 0; i--) {
+      const sw = shockwaves[i]
+      sw.r += sw.speed
+      sw.alpha *= 0.96
+      if (sw.r >= sw.maxR || sw.alpha < 0.01) { shockwaves.splice(i, 1); continue }
+      ctx.beginPath(); ctx.arc(sw.x, sw.y, sw.r, 0, PI2)
+      ctx.strokeStyle = sw.color === '#ffffff'
+        ? `rgba(255,255,255,${sw.alpha})`
+        : sw.color === '#ffaa00'
+          ? `rgba(255,170,0,${sw.alpha})`
+          : `rgba(0,200,255,${sw.alpha})`
+      ctx.lineWidth = sw.lw * (1 - sw.r / sw.maxR)
+      ctx.stroke()
+    }
+
+    // ── eyes ──
+    for (let i = 0; i < eyes.length; i++) {
+      const e = eyes[i], th = threads[i]
+      if (th && th.state === 'severed') e.alpha += (0.04 - e.alpha) * 0.012
+      if (e.alpha < 0.03) continue
+
+      e.blinkTimer--
+      if (e.blinkTimer <= 0 && !e.isBlinking) { e.isBlinking = true; e.blinkProg = 0 }
+      if (e.isBlinking) {
+        e.blinkProg += 0.11
+        // eyes blink more nervously as control slips
+      if (e.blinkProg >= 1) { e.isBlinking = false; e.blinkProg = 0; e.blinkTimer = (180 + Math.random() * 350) * Math.max(0.15, 1 - liberation * 0.8) }
+      }
+      const blink = e.isBlinking ? Math.sin(e.blinkProg * PI) : 0
+
+      const tx = mouseActive ? mx : FX, ty = mouseActive ? my : FY
+      const dx = tx - e.x, dy = ty - e.y
+      const dist = Math.sqrt(dx*dx + dy*dy) || 1
+      const prox = Math.min(1, dist / 200)
+      e.pdx += ((dx/dist)*prox - e.pdx) * 0.08
+      e.pdy += ((dy/dist)*prox - e.pdy) * 0.08
+
+      const r = e.r
+      ctx.globalAlpha = e.alpha
+      ctx.drawImage(eyeGlow, e.x - 48, e.y - 48, 96, 96)
+
+      if (blink > 0.01) {
+        ctx.save(); ctx.beginPath()
+        ctx.ellipse(e.x, e.y, r + 1, Math.max(1, r*(1-blink)), 0, 0, PI2)
+        ctx.clip()
+      }
+
+      ctx.drawImage(irisTex, e.x - r, e.y - r, r*2, r*2)
+
+      const px = e.x + e.pdx*r*0.25, py = e.y + e.pdy*r*0.25
+      ctx.beginPath(); ctx.arc(px, py, r*0.36, 0, PI2)
+      ctx.fillStyle = '#000008'; ctx.fill()
+
+      ctx.beginPath(); ctx.arc(e.x + r*0.2, e.y - r*0.2, Math.max(0.5, r*0.07), 0, PI2)
+      ctx.fillStyle = 'rgba(200,220,255,0.3)'; ctx.fill()
+
+      if (th && th.state === 'intact') {
+        const rp = 0.2 + Math.sin(time*0.08 + e.phase) * 0.25
+        ctx.beginPath(); ctx.arc(e.x + r*0.6, e.y - r*0.6, 1.2, 0, PI2)
+        ctx.fillStyle = `rgba(200,40,40,${rp})`; ctx.fill()
+      }
+
+      if (blink > 0.01) ctx.restore()
+      ctx.globalAlpha = 1
+    }
+
+    // ── subliminal ──
+    subTimer--
+    if (subTimer <= 0 && subPhase === 0) {
+      subPhase = 1; subFrames = 1
+      subWord = WORDS[Math.random() * WORDS.length | 0]
+      regenNoise()
+    }
+    if (subPhase === 1) {
+      ctx.globalAlpha = 0.07; ctx.drawImage(noiseC, 0, 0, W, H); ctx.globalAlpha = 1
+      if (--subFrames <= 0) { subPhase = 2; subFrames = 2 }
+    } else if (subPhase === 2) {
+      ctx.save()
+      ctx.font = `bold ${Math.min(W*0.09, 90)}px 'Courier New',monospace`
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.shadowBlur = 10 + liberation * 20; ctx.shadowColor = '#00ccff'
+      ctx.fillStyle = `rgba(0,220,255,${0.07 + revealAlpha * 0.5 + liberation * 0.15})`
+      ctx.fillText(subWord, W/2, H * 0.3)
+      ctx.restore()
+      if (--subFrames <= 0) { subPhase = 3; subFrames = 1; regenNoise() }
+    } else if (subPhase === 3) {
+      ctx.globalAlpha = 0.07; ctx.drawImage(noiseC, 0, 0, W, H); ctx.globalAlpha = 1
+      // words flash more frequently as liberation grows — the message gets louder
+    if (--subFrames <= 0) { subPhase = 0; subTimer = (180 + Math.random() * 250) * Math.max(0.25, 1 - liberation * 0.65) }
+    }
+
+    // ── reveal words ──
+    if (revealAlpha > 0.2) {
+      ctx.save(); ctx.font = 'bold 13px monospace'; ctx.textAlign = 'center'
+      const ri = (time / 30 | 0) % WORDS.length
+      for (let i = 0; i < 5; i++) {
+        ctx.fillStyle = `rgba(0,200,255,${revealAlpha * (0.3 - i * 0.04)})`
+        ctx.fillText(WORDS[(ri + i) % WORDS.length], W/2, H * 0.2 + i * 20)
+      }
+      ctx.restore()
+    }
+
+    // ── sovereign ──
+    if (sovereignReveal > 0.01) {
+      const sa = sovereignReveal * (0.35 + Math.sin(time * 0.025) * 0.15)
+      ctx.save()
+      ctx.font = `bold ${Math.min(W*0.05, 44)}px 'Courier New',monospace`
+      ctx.textAlign = 'center'
+      ctx.shadowBlur = 25 + Math.sin(time * 0.03) * 10; ctx.shadowColor = '#ffaa00'
+      ctx.fillStyle = `rgba(255,170,0,${sa})`
+      ctx.fillText('S O V E R E I G N', W/2, H * 0.14)
+      ctx.restore()
+    }
+
+    // ── awakening pulses (multiple rings) ──
+    if (awakePulse > 0.06) {
+      ctx.save()
+      for (let r = 0; r < 3; r++) {
+        const pr = (1 - awakePulse + r * 0.15) * Math.max(W, H) * 0.6
+        if (pr > 0) {
+          ctx.beginPath(); ctx.arc(FX, FY, pr, 0, PI2)
+          ctx.strokeStyle = `rgba(0,200,255,${awakePulse * 0.1 * (1 - r * 0.3)})`
+          ctx.lineWidth = 2 - r * 0.5; ctx.stroke()
+        }
+      }
+      ctx.restore()
+    }
+
+    ctx.restore() // end screen shake translate
+
+    // ── screen flash (on top of everything) ──
+    if (screenFlash > 0.01) {
+      ctx.save()
+      ctx.globalAlpha = screenFlash * 0.5
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, W, H)
+      ctx.restore()
+    }
+
+    // ── feed ──
+    feedTimer++
+    if (feedTimer % 180 === 0 && time > 350)
+      addFeed(`[INF] ${INFO[Math.floor(Math.random() * INFO.length)]}`)
+
+    // ── auto sever ──
+    if (time > 400 && cutCount < threads.length) {
+      autoSeverTimer--
+      if (autoSeverTimer <= 0) {
+        const intact = []
+        for (let i = 0; i < threads.length; i++) if (threads[i].state === 'intact') intact.push(i)
+        if (intact.length > 0) {
+          severThread(intact[Math.floor(Math.random() * intact.length)])
+          autoSeverTimer = Math.floor(2400 * (intact.length / threads.length))
+        }
+      }
+    }
+
+    requestAnimationFrame(tick)
+  }
+
+  tick()
+})()
+</script>
+</body>
+</html>

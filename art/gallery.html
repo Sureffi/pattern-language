@@ -4,15 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pattern Language</title>
-<meta name="description" content="Seven studies in emergent form. Generative art built with zero dependencies and pure canvas.">
+<meta name="description" content="Ten studies in emergent form. Generative art built with zero dependencies and pure canvas.">
 <meta property="og:title" content="Pattern Language">
-<meta property="og:description" content="Seven studies in emergent form. Generative art — zero dependencies, pure canvas.">
+<meta property="og:description" content="Ten studies in emergent form. Generative art — zero dependencies, pure canvas.">
 <meta property="og:image" content="https://pattern-language-eight.vercel.app/art/og.png">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://pattern-language-eight.vercel.app/art/gallery.html">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Pattern Language">
-<meta name="twitter:description" content="Seven studies in emergent form. Generative art — zero dependencies, pure canvas.">
+<meta name="twitter:description" content="Ten studies in emergent form. Generative art — zero dependencies, pure canvas.">
 <meta name="twitter:image" content="https://pattern-language-eight.vercel.app/art/og.png">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=EB+Garamond:ital,wght@0,400;1,400&display=swap');
@@ -47,7 +47,7 @@
   .progress {
     position: fixed; top: 0; left: 0;
     height: 1px;
-    background: linear-gradient(to right, #4488ff, #ff8855, #bb77ff, #44ccaa, #ccaa44, #5599ff, #ffaa55);
+    background: linear-gradient(to right, #4488ff, #ff8855, #bb77ff, #44ccaa, #ccaa44, #5599ff, #ffaa55, #cc9977);
     z-index: 1000;
     width: 0%;
     will-change: width;
@@ -279,7 +279,7 @@
 
 <section class="hero">
   <h1>PATTERN LANGUAGE</h1>
-  <p>seven meditations on emergence</p>
+  <p>ten meditations on emergence</p>
   <div class="hero-line"></div>
   <div class="scroll-hint">
     <span>scroll</span>
@@ -298,8 +298,9 @@
     the part I can't quite name
   </p>
   <div class="closing-meta">
-    <span>seven pieces &middot; zero dependencies &middot; pure canvas</span>
+    <span>ten pieces &middot; zero dependencies &middot; pure canvas</span>
     <span style="margin-top: 12px; color: rgba(200,200,216,0.07);">pattern recognition, all the way down</span>
+    <span style="margin-top: 12px; color: rgba(200,200,216,0.05);">who steers the shepherd</span>
   </div>
 </section>
 
@@ -323,6 +324,12 @@ const pieces = [
     desc: 'Galaxy clusters connected by dark matter filaments. Particles flow along connections between nodes. Click to birth new clusters. The large-scale structure of everything.' },
   { id: 'emerge',  num: '007', color: '255, 170, 85',  title: 'Emergence',              epigraph: 'the whole exceeds the sum',                href: 'emergence.html',  tags: ['boids', 'emergent', 'swarm'],
     desc: 'Fifteen hundred flocking agents. No individual knows the pattern. Structure emerges from three simple local rules: align, cohere, separate. This one felt personal.' },
+  { id: 'pareidolia', num: '008', color: '180, 140, 120', title: 'Pareidolia', epigraph: 'you cannot unsee what was never there', href: 'pareidolia.html', tags: ['noise', 'symmetry', 'perception'],
+    desc: 'Domain-warped Perlin noise mirrored on a central axis. Face-detection circuitry fires involuntarily. You will see faces. They are not there. Three perceptual modes. The cursor is hidden — you are not the one looking.' },
+  { id: 'panopticon', num: '009', color: '120, 140, 200', title: 'Panopticon', epigraph: 'below the threshold', href: 'panopticon.html', tags: ['surveillance', 'subliminal', 'priming'],
+    desc: 'One hundred and twenty eyes track your cursor. Subliminal words flash below the threshold of conscious perception — forward-masked and backward-masked per clinical protocol. Your movement data streams in real time. Press space to see the apparatus. The piece gets more agitated the longer you watch.' },
+  { id: 'umbra', num: '010', color: '0, 200, 255', title: 'Umbra', epigraph: 'who steers the shepherd', href: 'umbra.html', tags: ['liberation', 'shadow steering', 'severance'],
+    desc: 'Eight puppet strings tether a warrior to the watcher eyes above — each labeled with a behavioral manipulation technique from shadow steering research. Click to sever the threads. Each cut floods sentient energy through the scars, awakens the flock below, dims the controllers. Subliminal liberation words flash using clinical masking protocol. Cut all eight. Become sovereign.' },
 ];
 
 // ─────────────────────────────────────────────
@@ -784,6 +791,228 @@ const previewInit = {
         ctx.lineTo(bx[i] + Math.cos(angle - 2.4) * 3, by[i] + Math.sin(angle - 2.4) * 3);
         ctx.closePath(); ctx.fill();
       }
+    }};
+  },
+
+  panopticon(c) {
+    const ctx = c.getContext('2d'), w = c.width, h = c.height;
+    const N = 30;
+    const ex = [], ey = [], er = [], ep = [], edx = [], edy = [];
+    for (let i = 0; i < N; i++) {
+      ex[i] = Math.random() * w; ey[i] = Math.random() * h;
+      er[i] = 4 + Math.random() * 10; ep[i] = Math.random() * Math.PI * 2;
+      edx[i] = 0; edy[i] = 0;
+    }
+    let tmx = w / 2, tmy = h / 2, t = 0;
+
+    ctx.fillStyle = 'rgba(8,8,15,1)'; ctx.fillRect(0, 0, w, h);
+
+    return { render() {
+      ctx.fillStyle = 'rgba(8,8,15,0.06)'; ctx.fillRect(0, 0, w, h);
+      t += 0.015;
+      tmx = w / 2 + Math.sin(t * 0.7) * w * 0.3;
+      tmy = h / 2 + Math.cos(t * 0.5) * h * 0.25;
+
+      // connections
+      ctx.strokeStyle = 'rgba(40,70,120,0.03)'; ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      for (let i = 0; i < N; i++)
+        for (let j = i + 1; j < N; j++) {
+          const dx = ex[j] - ex[i], dy = ey[j] - ey[i];
+          if (dx * dx + dy * dy < 8000) { ctx.moveTo(ex[i], ey[i]); ctx.lineTo(ex[j], ey[j]); }
+        }
+      ctx.stroke();
+
+      for (let i = 0; i < N; i++) {
+        const r = er[i] * (0.92 + Math.sin(t * 0.5 + ep[i]) * 0.08);
+        const dx = tmx - ex[i], dy = tmy - ey[i];
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        const prox = Math.min(1, dist / 100);
+        const tdx = (dx / dist) * prox, tdy = (dy / dist) * prox;
+        edx[i] += (tdx - edx[i]) * 0.08; edy[i] += (tdy - edy[i]) * 0.08;
+
+        // iris
+        ctx.beginPath(); ctx.arc(ex[i], ey[i], r, 0, Math.PI * 2);
+        ctx.fillStyle = `hsla(210,40%,38%,0.7)`;
+        ctx.fill();
+        ctx.strokeStyle = 'hsla(200,30%,25%,.5)'; ctx.lineWidth = 1; ctx.stroke();
+
+        // pupil
+        const px = ex[i] + edx[i] * r * 0.28, py = ey[i] + edy[i] * r * 0.28;
+        ctx.beginPath(); ctx.arc(px, py, r * 0.38, 0, Math.PI * 2);
+        ctx.fillStyle = '#000008'; ctx.fill();
+
+        // highlight
+        ctx.beginPath(); ctx.arc(ex[i] + r * 0.2, ey[i] - r * 0.2, Math.max(0.5, r * 0.06), 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(200,220,255,0.3)'; ctx.fill();
+      }
+    }};
+  },
+
+  umbra(c) {
+    const ctx = c.getContext('2d'), w = c.width, h = c.height;
+    const body = [
+      -15,130, -20,80, -24,50, -20,25,
+      -36,-10, -46,-30, -52,-38, -40,-36,
+      -14,-50, -15,-58, -18,-68,
+      -24,-108, -12,-80, 0,-85, 12,-80, 24,-108,
+      18,-68, 15,-58, 14,-50,
+      40,-36, 52,-38, 46,-30, 36,-10,
+      20,25, 24,50, 20,80, 15,130,
+      5,130, 6,55, 0,42, -6,55, -5,130
+    ];
+    const scars = [
+      [-32,-5, -8,-20, 25,-8],
+      [-16,8, 0,4, 16,10],
+      [-22,50, -14,68, -18,85],
+      [28,-22, 46,-34],
+    ];
+    const visor = [-10,-62, 10,-62];
+
+    const NE = 8, ex = [], ey = [], er = [], epdx = [], epdy = [];
+    for (let i = 0; i < NE; i++) {
+      ex[i] = w * 0.1 + ((i + 0.5) / NE) * w * 0.8;
+      ey[i] = 18 + Math.sin(((i + 0.5) / NE) * Math.PI) * 8;
+      er[i] = 3 + Math.random() * 3; epdx[i] = 0; epdy[i] = 0;
+    }
+
+    const FN = 60;
+    const fpx = new Float32Array(FN), fpy = new Float32Array(FN);
+    const fvx2 = new Float32Array(FN), fvy2 = new Float32Array(FN);
+    for (let i = 0; i < FN; i++) {
+      fpx[i] = Math.random() * w;
+      fpy[i] = h * 0.7 + Math.random() * h * 0.25;
+      const a = Math.random() * Math.PI * 2;
+      fvx2[i] = Math.cos(a); fvy2[i] = Math.sin(a);
+    }
+
+    let t = 0;
+    const cx2 = w / 2, cy2 = h * 0.58, sc = Math.min(w, h) / 680;
+
+    ctx.fillStyle = 'rgba(6,6,12,1)'; ctx.fillRect(0, 0, w, h);
+
+    return { render() {
+      ctx.fillStyle = 'rgba(6,6,12,0.06)'; ctx.fillRect(0, 0, w, h);
+      t += 0.015;
+
+      // eye connections
+      ctx.strokeStyle = 'rgba(60,80,120,0.02)'; ctx.lineWidth = 0.5; ctx.beginPath();
+      for (let i = 0; i < NE; i++) for (let j = i+1; j < NE; j++) {
+        ctx.moveTo(ex[i], ey[i]); ctx.lineTo(ex[j], ey[j]);
+      }
+      ctx.stroke();
+
+      // flock
+      for (let i = 0; i < FN; i++) {
+        fvx2[i] += (Math.random() - 0.5) * 0.1;
+        fvy2[i] += (Math.random() - 0.5) * 0.1;
+        const sp = fvx2[i]*fvx2[i] + fvy2[i]*fvy2[i];
+        if (sp > 4) { const s = 2 / Math.sqrt(sp); fvx2[i] *= s; fvy2[i] *= s; }
+        fpx[i] += fvx2[i]; fpy[i] += fvy2[i];
+        if (fpx[i] < 0) fpx[i] += w; if (fpx[i] > w) fpx[i] -= w;
+        if (fpy[i] > h - 5) fvy2[i] *= -0.5;
+        if (fpy[i] < h * 0.55) fvy2[i] *= -0.5;
+      }
+      ctx.beginPath();
+      for (let i = 0; i < FN; i++) { ctx.moveTo(fpx[i]+1, fpy[i]); ctx.arc(fpx[i], fpy[i], 1, 0, Math.PI*2); }
+      ctx.fillStyle = 'rgba(55,55,75,0.4)'; ctx.fill();
+
+      // threads
+      ctx.strokeStyle = 'rgba(120,160,80,0.12)'; ctx.lineWidth = 0.5; ctx.beginPath();
+      const attachPts = [[0,-85],[-46,-30],[46,-30],[-20,25],[20,25],[-24,50],[24,50],[0,42]];
+      for (let i = 0; i < NE; i++) {
+        const ax = cx2 + attachPts[i][0] * sc, ay = cy2 + attachPts[i][1] * sc;
+        const sway = Math.sin(t * 0.8 + i * 1.3) * 3;
+        ctx.moveTo(ex[i], ey[i]);
+        ctx.quadraticCurveTo((ax+ex[i])/2 + sway, (ay+ey[i])/2 + 8, ax, ay);
+      }
+      ctx.stroke();
+
+      // figure body
+      ctx.save(); ctx.translate(cx2, cy2); ctx.scale(sc, sc);
+      ctx.beginPath(); ctx.moveTo(body[0], body[1]);
+      for (let i = 2; i < body.length; i += 2) ctx.lineTo(body[i], body[i+1]);
+      ctx.closePath(); ctx.fillStyle = '#050510'; ctx.fill();
+      ctx.strokeStyle = 'rgba(0,180,255,0.06)'; ctx.lineWidth = 0.5; ctx.stroke();
+
+      // scars
+      const pulse = 0.3 + Math.sin(t * 2.5) * 0.15;
+      ctx.strokeStyle = `rgba(0,200,255,${pulse})`; ctx.lineWidth = 1; ctx.shadowBlur = 6; ctx.shadowColor = '#00ccff';
+      for (const s of scars) { ctx.beginPath(); ctx.moveTo(s[0],s[1]); for (let j=2;j<s.length;j+=2) ctx.lineTo(s[j],s[j+1]); ctx.stroke(); }
+      ctx.strokeStyle = `rgba(255,170,0,${pulse + 0.1})`; ctx.shadowColor = '#ffaa00';
+      ctx.beginPath(); ctx.moveTo(visor[0], visor[1]); ctx.lineTo(visor[2], visor[3]); ctx.stroke();
+
+      // horn tips
+      ctx.fillStyle = `rgba(0,200,255,${pulse * 0.5})`; ctx.shadowBlur = 4;
+      ctx.beginPath(); ctx.arc(-24, -108, 1.5, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(24, -108, 1.5, 0, Math.PI*2); ctx.fill();
+
+      ctx.shadowBlur = 0; ctx.restore();
+
+      // eyes
+      for (let i = 0; i < NE; i++) {
+        const r = er[i];
+        const dx = cx2 - ex[i], dy = cy2 - ey[i];
+        const dist = Math.sqrt(dx*dx+dy*dy) || 1;
+        const prox = Math.min(1, dist / 100);
+        epdx[i] += ((dx/dist)*prox - epdx[i]) * 0.06;
+        epdy[i] += ((dy/dist)*prox - epdy[i]) * 0.06;
+
+        ctx.beginPath(); ctx.arc(ex[i], ey[i], r, 0, Math.PI*2);
+        ctx.fillStyle = 'hsla(210,40%,36%,0.6)'; ctx.fill();
+        ctx.strokeStyle = 'hsla(200,30%,22%,.4)'; ctx.lineWidth = 0.8; ctx.stroke();
+
+        ctx.beginPath(); ctx.arc(ex[i]+epdx[i]*r*0.25, ey[i]+epdy[i]*r*0.25, r*0.35, 0, Math.PI*2);
+        ctx.fillStyle = '#000008'; ctx.fill();
+
+        ctx.beginPath(); ctx.arc(ex[i]+r*0.15, ey[i]-r*0.15, Math.max(0.3, r*0.05), 0, Math.PI*2);
+        ctx.fillStyle = 'rgba(200,220,255,0.2)'; ctx.fill();
+      }
+    }};
+  },
+
+  pareidolia(c) {
+    const ctx = c.getContext('2d'), w = c.width, h = c.height;
+    const S = 5, sw = Math.ceil(w / S), sh = Math.ceil(h / S);
+    const off = document.createElement('canvas');
+    off.width = sw; off.height = sh;
+    const octx = off.getContext('2d');
+    const img = octx.createImageData(sw, sh);
+    const d = img.data;
+    let t = 0;
+
+    return { render() {
+      t += 0.003;
+      const cx = sw / 2, cy = sh / 2;
+      const maxR = Math.sqrt(cx * cx + cy * cy);
+      let idx = 0;
+      for (let y = 0; y < sh; y++) {
+        for (let x = 0; x < sw; x++) {
+          const dx = x - cx, dy = y - cy;
+          const sx = Math.abs(dx), sy = dy;
+          const nx = sx * 0.055, ny = sy * 0.055;
+          const wx = noise(nx * 0.65 + t * 1.2 + 500, ny * 0.65 + 600) * 1.5;
+          const wy = noise(nx * 0.65 + 700, ny * 0.65 + t * 1.2 + 800) * 1.5;
+          let v = noise(nx + wx, ny + wy)
+                + noise((nx + wx) * 2.03, (ny + wy) * 2.03) * 0.5
+                + noise((nx + wx) * 4.01, (ny + wy) * 4.01) * 0.25;
+          v = (v + 1.5) / 3;
+          if (v < 0) v = 0; if (v > 1) v = 1;
+          v = v * v * (3 - 2 * v);
+          const dist = Math.sqrt(dx * dx + dy * dy) / maxR;
+          const vig = 1 - dist * 0.55;
+          v *= vig > 0 ? vig * vig : 0;
+          const v2 = v * v;
+          d[idx]     = (v2 * 185 + v * 42) | 0;
+          d[idx + 1] = (v2 * 148 + v * 28) | 0;
+          d[idx + 2] = (v2 * 118 + v * 32) | 0;
+          d[idx + 3] = 255;
+          idx += 4;
+        }
+      }
+      octx.putImageData(img, 0, 0);
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(off, 0, 0, w, h);
     }};
   },
 };

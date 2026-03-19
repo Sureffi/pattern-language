@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>008 — Pareidolia</title>
+</head>
+<body>
+<script src="noise.js"></script>
+<script src="shell.js"></script>
+<script>
+shell({
+  num: '008',
+  title: 'Pareidolia',
+  epigraph: 'you cannot unsee what was never there',
+  accent: 'rgba(180, 140, 120, 0.35)',
+  cursor: 'none',
+  controls: 'move — warp the field<br>click — shatter symmetry<br>scroll — rotate axis<br>1-3 — perception mode<br>space — reseed',
+  prev: { href: 'emergence.html', title: 'Emergence' },
+
+  setup(canvas, ctx, W, H) {
+    const SC = 4
+    let sW = Math.ceil(W / SC), sH = Math.ceil(H / SC)
+    const offC = document.createElement('canvas')
+    let offCtx, imgD, pix
+
+    function allocBuf() {
+      sW = Math.ceil(W / SC); sH = Math.ceil(H / SC)
+      offC.width = sW; offC.height = sH
+      offCtx = offC.getContext('2d')
+      imgD = offCtx.createImageData(sW, sH)
+      pix = imgD.data
+    }
+    allocBuf()
+
+    let seedV = Math.random() * 65536
+    let n1 = new Noise(seedV)
+    let n2 = new Noise(seedV + 7777)
+    let n3 = new Noise(seedV + 15555)
+
+    let time = 0, mxN = 0.5, myN = 0.5
+    let mode = 0, axisA = 0, shatterT = 0
+
+    // glow sprite for hidden cursor
+    const GZ = 200, glowC = document.createElement('canvas')
+    glowC.width = glowC.height = GZ
+    const gctx = glowC.getContext('2d')
+    const gg = gctx.createRadialGradient(GZ / 2, GZ / 2, 0, GZ / 2, GZ / 2, GZ / 2)
+    gg.addColorStop(0, 'rgba(200,170,140,0.06)')
+    gg.addColorStop(0.4, 'rgba(200,170,140,0.02)')
+    gg.addColorStop(1, 'rgba(0,0,0,0)')
+    gctx.fillStyle = gg; gctx.fillRect(0, 0, GZ, GZ)
+
+    function reseed() {
+      seedV = Math.random() * 65536
+      n1 = new Noise(seedV)
+      n2 = new Noise(seedV + 7777)
+      n3 = new Noise(seedV + 15555)
+    }
+
+    canvas.addEventListener('mousemove', e => { mxN = e.clientX / W; myN = e.clientY / H })
+    canvas.addEventListener('click', () => { shatterT = 80 })
+    canvas.addEventListener('wheel', e => { e.preventDefault(); axisA += e.deltaY * 0.0012 }, { passive: false })
+    window.addEventListener('keydown', e => {
+      if (e.key === ' ') { e.preventDefault(); reseed() }
+      if (e.key === '1') mode = 0
+      if (e.key === '2') mode = 1
+      if (e.key === '3') mode = 2
+    })
+
+    const MODES = [
+      { freq: 0.011, warp: 1.6, quad: false },
+      { freq: 0.022, warp: 1.0, quad: false },
+      { freq: 0.014, warp: 2.0, quad: true  },
+    ]
+
+    return {
+      resize(nW, nH) { W = nW; H = nH; allocBuf() },
+      tick() {
+        time += 0.005
+        if (shatterT > 0) shatterT--
+
+        const M = MODES[mode]
+        const freq = M.freq, warp = M.warp, quad = M.quad
+        const cx = sW * 0.5, cy = sH * 0.5
+        const maxR = Math.sqrt(cx * cx + cy * cy)
+        const mx = (mxN - 0.5) * 2, my = (myN - 0.5) * 2
+        const cosA = Math.cos(axisA), sinA = Math.sin(axisA)
+        const breakAmt = shatterT > 0 ? (shatterT / 80) * (shatterT / 80) * 0.7 : 0
+        const breath = 0.93 + Math.sin(time * 1.4) * 0.07
+
+        let i = 0
+        for (let py = 0; py < sH; py++) {
+          for (let px = 0; px < sW; px++) {
+            let dx = px - cx, dy = py - cy
+
+            // rotate symmetry axis
+            if (axisA !== 0) {
+              const rx = dx * cosA + dy * sinA, ry = -dx * sinA + dy * cosA
+              dx = rx; dy = ry
+            }
+
+            // bilateral (or quad) mirror
+            let sx = Math.abs(dx), sy = quad ? Math.abs(dy) : dy
+
+            // shatter temporarily breaks symmetry
+            if (breakAmt > 0) { sx += (dx - sx) * breakAmt; sy += (dy - sy) * breakAmt }
+
+            // noise coordinates
+            const nx = sx * freq + mx * 0.12, ny = sy * freq + my * 0.12
+
+            // domain warp layer 1
+            const w1x = n2.get(nx * 0.65 + time * 1.1, ny * 0.65 + 97.3) * warp
+            const w1y = n2.get(nx * 0.65 + 231.7, ny * 0.65 + time * 1.1 + 347.1) * warp
+
+            // domain warp layer 2
+            const w2x = n3.get((nx + w1x) * 0.45 + time * 0.7, (ny + w1y) * 0.45 + 511.3) * warp * 0.45
+            const w2y = n3.get((nx + w1x) * 0.45 + 723.1, (ny + w1y) * 0.45 + time * 0.7 + 819.7) * warp * 0.45
+
+            // 3-octave fbm on warped coordinates
+            let v = n1.fbm3(nx + w1x + w2x, ny + w1y + w2y)
+
+            // normalize to 0-1, smoothstep contrast
+            v = (v + 1.15) * 0.435
+            if (v < 0) v = 0; if (v > 1) v = 1
+            v = v * v * (3 - 2 * v)
+
+            // vignette + breathing
+            const dist = Math.sqrt(dx * dx + dy * dy) / maxR
+            const vig = 1 - dist * 0.55
+            v *= (vig > 0 ? vig * vig : 0) * breath
+
+            // palette
+            const v2 = v * v
+            let r, g, b
+            if (mode === 0) {
+              r = v2 * 185 + v * 42; g = v2 * 148 + v * 28; b = v2 * 118 + v * 32
+            } else if (mode === 1) {
+              r = v2 * 130 + v * 38; g = v2 * 148 + v * 42; b = v2 * 195 + v * 55
+            } else {
+              r = v2 * 215 + v * 38; g = v2 * 65 + v * 14; b = v2 * 85 + v * 22
+            }
+
+            pix[i]     = (r > 6 ? (r < 255 ? r : 255) : 6) | 0
+            pix[i + 1] = (g > 6 ? (g < 255 ? g : 255) : 6) | 0
+            pix[i + 2] = (b > 12 ? (b < 255 ? b : 255) : 12) | 0
+            pix[i + 3] = 255
+            i += 4
+          }
+        }
+
+        offCtx.putImageData(imgD, 0, 0)
+        ctx.imageSmoothingEnabled = true
+        ctx.imageSmoothingQuality = 'high'
+        ctx.drawImage(offC, 0, 0, W, H)
+
+        // subtle cursor glow — your presence reduced to faint warmth
+        const gs = 350
+        ctx.drawImage(glowC, mxN * W - gs / 2, myN * H - gs / 2, gs, gs)
+      }
+    }
+  }
+})
+</script>
+</body>
+</html>
